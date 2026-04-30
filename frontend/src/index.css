@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #FAFAF8;
+  --surface: #FFFFFF;
+  --border: #ECE7DC;
+  --text: #1E2B5E;
+}
+
+* { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+html, body, #root { height: 100%; }
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  background: #FAFAF8;
+  color: #1E2B5E;
+  font-feature-settings: "ss01", "cv11";
+  font-weight: 400;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #E0DBD0; border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: #C4B99A; background-clip: padding-box; }
+
+@layer base {
+  h1, h2, h3, h4 { font-family: 'Inter', sans-serif; letter-spacing: -0.03em; }
+  h1 { font-weight: 700; }
+}
+
+@layer components {
+  /* Cards — Apple style: soft, generous radius, no harsh borders */
+  .card {
+    @apply bg-white rounded-3xl border border-border/70;
+  }
+  .card-flat {
+    @apply bg-white rounded-3xl;
+  }
+  .card-hover {
+    @apply transition-all duration-500 ease-out hover:shadow-card hover:-translate-y-0.5;
+  }
+
+  /* Buttons — Apple pill style */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-medium text-[13px]
+           tracking-tight transition-all duration-200 ease-out;
+  }
+  .btn-lg {
+    @apply px-7 py-3.5 text-[15px];
+  }
+  .btn-primary {
+    @apply btn bg-navy text-bone hover:bg-navy-700 active:scale-[0.97];
+  }
+  .btn-secondary {
+    @apply btn bg-bone-200/80 text-navy hover:bg-bone-300 active:scale-[0.97];
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-navy hover:bg-bone-200/70 active:scale-[0.97];
+  }
+  .btn-accent {
+    @apply btn bg-olive text-white hover:bg-olive-600 active:scale-[0.97];
+  }
+  .btn-danger {
+    @apply btn bg-danger/10 text-danger hover:bg-danger/15;
+  }
+  .btn-link {
+    @apply inline-flex items-center gap-1 text-[13px] font-medium text-olive-700
+           hover:text-olive-600 transition;
+  }
+
+  /* Inputs */
+  .input {
+    @apply w-full bg-bone-100/70 border border-transparent rounded-2xl px-4 py-3 text-navy text-sm
+           placeholder:text-muted/60
+           focus:outline-none focus:border-navy/40 focus:bg-white
+           focus:ring-4 focus:ring-navy/5 transition;
+  }
+  .label {
+    @apply block text-[11px] font-medium text-muted mb-2 tracking-wide uppercase;
+  }
+
+  /* Section labels */
+  .section-label {
+    @apply text-[10px] uppercase tracking-[0.18em] text-muted/70 px-3 mt-7 mb-2 font-semibold;
+  }
+
+  /* Pills / Chips */
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-tight;
+  }
+  .chip-navy { @apply chip bg-navy/10 text-navy; }
+  .chip-olive { @apply chip bg-olive/15 text-olive-700; }
+  .chip-leather { @apply chip bg-leather/10 text-leather; }
+  .chip-warn { @apply chip bg-warn/15 text-leather; }
+  .chip-danger { @apply chip bg-danger/10 text-danger; }
+  .chip-muted { @apply chip bg-bone-200/70 text-muted; }
+
+  /* Hero — Apple-grade type */
+  .hero-eyebrow {
+    @apply text-[12px] uppercase tracking-[0.22em] text-olive-700 font-semibold mb-4;
+  }
+  .hero-title {
+    @apply font-display font-bold tracking-[-0.04em] leading-[1.02];
+  }
+  .hero-sub {
+    @apply text-muted text-lg md:text-xl leading-relaxed font-light;
+  }
+
+  /* Stats */
+  .stat-label {
+    @apply text-[11px] uppercase tracking-[0.14em] text-muted font-medium;
+  }
+  .stat-value {
+    @apply font-display font-semibold tracking-[-0.03em] text-navy;
+  }
+
+  /* Glass surface — Apple top nav */
+  .glass {
+    @apply bg-white/70 backdrop-blur-2xl backdrop-saturate-150;
+  }
+}
+
+/* Ambient gradient — very subtle */
+.bg-grain {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(138, 154, 91, 0.05) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(30, 43, 94, 0.04) 0px, transparent 50%);
+}
+
+/* Apple-style focus ring */
+*:focus-visible {
+  outline: 2px solid #1E2B5E;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+html { scroll-behavior: smooth; }
