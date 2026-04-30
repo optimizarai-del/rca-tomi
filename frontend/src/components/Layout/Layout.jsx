@@ -1,5 +1,6 @@
 import HUD from '../HUD'
 import Sidebar from './Sidebar'
+import AgentChat from '../AgentChat'
 
 export default function Layout({ children, fullWidth = false }) {
   return (
@@ -11,6 +12,7 @@ export default function Layout({ children, fullWidth = false }) {
           {children}
         </main>
       </div>
+      <AgentChat />
     </div>
   )
 }

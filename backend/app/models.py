@@ -259,3 +259,29 @@ class Gasto(Base):
     fecha = Column(Date, default=date.today)
     pagado = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ─── Agente IA ───
+class AgentSession(Base):
+    """Conversación persistente del usuario con el agente operario."""
+    __tablename__ = "agent_sessions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    messages_json = Column(Text, default="[]")  # historial Anthropic-format
+    last_message_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AgentAction(Base):
+    """Audit log de cada tool-call ejecutado por el agente."""
+    __tablename__ = "agent_actions"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    session_id = Column(Integer, ForeignKey("agent_sessions.id"))
+    tool_name = Column(String, nullable=False, index=True)
+    tool_input_json = Column(Text)
+    tool_output_json = Column(Text)
+    ok = Column(Boolean, default=True)
+    error = Column(Text)
+    canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
