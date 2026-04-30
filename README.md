@@ -46,33 +46,18 @@ frontend/
 
 ## 🚀 Cómo correrlo
 
-### Pre-requisitos
-- **Python 3.11+** instalado y en PATH
-- **Node.js 20+** instalado y en PATH
+**Para una PC nueva, ver [SETUP.md](SETUP.md) — guía completa con scripts automáticos.**
 
-### Backend
-```powershell
-cd C:\Users\Usuario\Desktop\RCA\backend
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
-
-# (Opcional) Cargar datos demo
-python -m app.seed
-
-# Levantar API
-python run.py
+TL;DR (Windows):
+```cmd
+git clone <repo>
+cd <repo>
+setup.bat        # 1 vez: venv + deps + seed
+:: editá backend\.env y pegá tu ANTHROPIC_API_KEY
+start-backend.bat
+start-frontend.bat
 ```
-→ http://localhost:8000 · docs: http://localhost:8000/docs
-
-### Frontend
-```powershell
-cd C:\Users\Usuario\Desktop\RCA\frontend
-npm install
-npm run dev
-```
-→ http://localhost:5173
+→ Backend http://localhost:8010 · Frontend http://localhost:5175 · Docs http://localhost:8010/docs
 
 ## 👤 Login demo (después de correr seed)
 
@@ -115,6 +100,23 @@ El backend:
 - `admin` — Project Manager (todo excepto $)
 - `supervisor` — jefe de obra/capataz con web
 - `usuario_bot` — solo carga por WhatsApp
+
+## 🤖 Operario IA (centro de mando)
+
+Chat conversacional con Claude que opera la plataforma en lenguaje natural.
+Botón flotante "Operario IA" abajo a la derecha en cualquier página autenticada.
+
+**Sprint 1 (actual) — solo lectura:** dashboard global, listar/detalle de obras,
+órdenes, cuadrillas, materiales (con alertas de stock bajo), proveedores,
+eventos recientes, finanzas por obra, usuarios. Permisos por rol del usuario
+logueado. Audit log en tabla `agent_actions`. Historial persistente por usuario
+en `agent_sessions`.
+
+**Próximos sprints:** escritura con confirmación humana (crear órdenes, registrar
+gastos/materiales, cerrar órdenes), reemplazo del parser de WhatsApp por el mismo
+agente, Vision IA para tickets/fotos, resumen semanal proactivo.
+
+**Endpoints:** `POST /api/agent/chat`, `POST /api/agent/reset`, `GET /api/agent/actions`.
 
 ## 🔮 Roadmap (siguientes features)
 
