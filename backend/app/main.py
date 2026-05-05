@@ -5,15 +5,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app.routers import (
     auth, users, obras, cuadrillas, materiales, proveedores,
-    ordenes, eventos, gastos, dashboard, whatsapp, agent,
+    ordenes, eventos, dashboard, whatsapp, agent,
+    clientes, regimenes_fiscales, etapas, movimientos, aportes, comprobantes,
 )
 
 load_dotenv(override=True)
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="RCA. — Diseño · Construcción · Servicio", version="0.3.0")
+app = FastAPI(title="RCA. — Sistema de Gestión de Obras", version="0.4.0")
 
-origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+origins = os.getenv("CORS_ORIGINS", "http://localhost:5175,http://localhost:5173").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -22,11 +23,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for r in [auth, users, obras, cuadrillas, materiales, proveedores,
-          ordenes, eventos, gastos, dashboard, whatsapp, agent]:
+ROUTERS = [
+    auth, users,
+    regimenes_fiscales, clientes,
+    obras, etapas,
+    movimientos, aportes, comprobantes,
+    cuadrillas, materiales, proveedores, ordenes, eventos,
+    dashboard, whatsapp, agent,
+]
+
+for r in ROUTERS:
     app.include_router(r.router)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "brand": "RCA."}
+    return {"status": "ok", "brand": "RCA.", "version": "0.4.0"}

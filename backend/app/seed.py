@@ -1,223 +1,340 @@
-"""Crea datos de demo para arrancar con el juego."""
-from datetime import date, datetime, timedelta
-from app.database import SessionLocal, Base, engine
+"""Seed v0.4 — datos demo realistas alineados al modelo financiero del doc.
+
+Carga:
+- 3 regímenes fiscales estándar
+- 1 super_admin
+- 2 socios (User con rol admin para ser referenciables en aportes)
+- 3 clientes (1 público RI, 1 privado RI, 1 particular)
+- 2 obras: "IDS - Colegio Domingo Savio" (TOTAL_BLANCO) y "SP - San Pedro" (MIXTA)
+- Etapas para cada obra
+- Movimientos financieros de ejemplo (ingresos cliente, egresos MO/materiales/subcontrato, cheques, aportes)
+- Capa lúdica mínima: 2 cuadrillas, materiales y proveedores demo
+"""
+from datetime import date, timedelta
+from app.database import Base, engine, SessionLocal
 from app import models
 from app.security import hash_password
 
-Base.metadata.create_all(bind=engine)
-
 
 def run():
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         if db.query(models.User).count() > 0:
-            print("Ya hay datos, skip seed.")
+            print("[seed] Ya hay datos. Si querés reiniciar, corré scripts/reset_db.py")
             return
 
-        # Admin
-        admin = models.User(
-            name="Admin", last_name="Demo", email="admin@demo.com",
-            phone="+5491100000001",
-            password_hash=hash_password("demo1234"),
-            role=models.UserRole.admin_finanzas,
-            status=models.UserStatus.active,
-            avatar="🧑‍💼", xp=120, onboarding_step=3,
+        # ─── REGÍMENES FISCALES ───
+        ri = models.RegimenFiscal(
+            codigo="RI", nombre="Responsable Inscripto", iva_default=0.21,
+            aplica_iibb=True, aplica_ganancias=True,
+            descripcion="Responsable Inscripto en IVA — AFIP.",
         )
-        db.add(admin)
-        db.commit()
-        db.refresh(admin)
+        mt = models.RegimenFiscal(
+            codigo="MT", nombre="Monotributo", iva_default=0,
+            aplica_iibb=True, aplica_ganancias=False,
+            descripcion="Monotributista — sin IVA, paga IIBB en algunas jurisdicciones.",
+        )
+        ex = models.RegimenFiscal(
+            codigo="EX", nombre="Exento / Consumidor Final", iva_default=0,
+            aplica_iibb=False, aplica_ganancias=False,
+            descripcion="Particular o entidad exenta.",
+        )
+        db.add_all([ri, mt, ex]); db.flush()
 
-        # Cuadrillas
-        cuadrillas_data = [
-            ("Los Maestros", "albañilería", "🧱", "#F59E0B", 8, 92.0, 3, 250),
-            ("Volt Power", "electricidad", "⚡", "#FBBF24", 4, 88.0, 2, 180),
-            ("Aqua Plomers", "plomería", "🚿", "#06B6D4", 3, 85.0, 2, 150),
-            ("Color Squad", "pintura", "🎨", "#A855F7", 5, 78.0, 1, 80),
-            ("Iron Crew", "herrería", "⚙️", "#94A3B8", 4, 90.0, 2, 200),
-        ]
-        cuadrillas = []
-        for n, esp, av, col, miembros, ef, niv, exp in cuadrillas_data:
-            c = models.Cuadrilla(
-                nombre=n, especialidad=esp, avatar=av, color=col,
-                cantidad_miembros=miembros, eficiencia=ef, nivel=niv,
-                experiencia=exp, telefono="+541100000000",
-            )
-            db.add(c); cuadrillas.append(c)
-        db.commit()
+        # ─── USUARIOS ───
+        admin = models.User(
+            name="Admin", last_name="RCA", email="admin@rca.com",
+            phone="+5491100000001", password_hash=hash_password("demo1234"),
+            role=models.UserRole.super_admin, status=models.UserStatus.active,
+            avatar="🛡️", xp=0,
+        )
+        socio_a = models.User(
+            name="Socio", last_name="A", email="socio.a@rca.com",
+            phone="+5491100000002", password_hash=hash_password("demo1234"),
+            role=models.UserRole.admin_finanzas, status=models.UserStatus.active,
+            avatar="👤", xp=0,
+        )
+        socio_b = models.User(
+            name="Socio", last_name="B", email="socio.b@rca.com",
+            phone="+5491100000003", password_hash=hash_password("demo1234"),
+            role=models.UserRole.admin_finanzas, status=models.UserStatus.active,
+            avatar="👤", xp=0,
+        )
+        capataz = models.User(
+            name="Kevin", last_name="Rodriguez", email="kevin@rca.com",
+            phone="+5491100000004", password_hash=hash_password("demo1234"),
+            role=models.UserRole.supervisor, status=models.UserStatus.active,
+            avatar="👷", xp=0,
+        )
+        db.add_all([admin, socio_a, socio_b, capataz]); db.flush()
 
-        # Proveedores
-        proveedores_data = [
-            ("Cementos Patagónicos", "30-12345-1", "+5491100000010", "ventas@cempat.com", "cemento", 4.5, 2),
-            ("Hierros del Sur", "30-23456-2", "+5491100000011", "info@hierrossur.com", "hierro", 4.2, 4),
-            ("Loma Negra Ladrillos", "30-34567-3", "+5491100000012", "ventas@loma.com", "ladrillos", 4.8, 1),
-            ("Pinturas Pro", "30-45678-4", "+5491100000013", "ppro@gmail.com", "pinturas", 3.9, 5),
-        ]
-        proveedores = []
-        for n, c, t, em, r, rt, pl in proveedores_data:
-            p = models.Proveedor(nombre=n, cuit=c, telefono=t, email=em, rubro=r, rating=rt, plazo_entrega_dias=pl)
-            db.add(p); proveedores.append(p)
-        db.commit()
+        # ─── CLIENTES ───
+        cli_publico = models.Cliente(
+            nombre="Colegio Domingo Savio", tipo="publico",
+            cuit="30-12345678-9", razon_social="Asociación Civil Domingo Savio",
+            regimen_fiscal_id=ri.id, email="admin@savio.edu.ar",
+            telefono="11-4444-5555", direccion="Av. Belgrano 1500, CABA",
+        )
+        cli_privado = models.Cliente(
+            nombre="Constructora San Pedro SA", tipo="privado_ri",
+            cuit="30-98765432-1", razon_social="Constructora San Pedro SA",
+            regimen_fiscal_id=ri.id, email="contacto@sanpedro.com.ar",
+        )
+        cli_particular = models.Cliente(
+            nombre="Familia García", tipo="particular",
+            regimen_fiscal_id=ex.id,
+        )
+        db.add_all([cli_publico, cli_privado, cli_particular]); db.flush()
 
-        # Materiales
-        materiales_data = [
-            ("Cemento Portland", "cemento", "bolsa", 240, 50, 8500, 0, "🟫"),
-            ("Hierro 8mm", "hierro", "tn", 1.8, 0.5, 1850000, 1, "🔩"),
-            ("Hierro 12mm", "hierro", "tn", 0.9, 0.5, 1900000, 1, "🔩"),
-            ("Ladrillo común", "ladrillo", "u", 12500, 3000, 280, 2, "🧱"),
-            ("Arena gruesa", "áridos", "m3", 18, 5, 12000, None, "🟨"),
-            ("Piedra", "áridos", "m3", 12, 5, 14500, None, "⬛"),
-            ("Cal hidráulica", "cemento", "bolsa", 35, 20, 6800, 0, "⬜"),
-            ("Pintura látex", "terminaciones", "lata", 22, 10, 18000, 3, "🎨"),
-            ("Cable 2.5mm", "instalaciones", "rollo", 14, 5, 32000, None, "🔌"),
-            ("Caño PVC 110mm", "instalaciones", "u", 28, 10, 4500, None, "🔵"),
-        ]
-        for n, cat, u, st, mn, pr, pid, ic in materiales_data:
-            m = models.Material(
-                nombre=n, categoria=cat, unidad=u, stock=st, stock_minimo=mn,
-                precio_unitario=pr,
-                proveedor_id=proveedores[pid].id if pid is not None else None,
-                icono=ic,
-            )
-            db.add(m)
-        db.commit()
+        # ─── OBRAS ───
+        today = date.today()
+        ids_obra = models.Obra(
+            codigo="IDS", nombre="IDS — Colegio Domingo Savio Patio + Baños",
+            cliente_id=cli_publico.id, regimen_fiscal_id=ri.id,
+            tipo_facturacion=models.TipoFacturacion.TOTAL_BLANCO,
+            direccion="Av. Belgrano 1500", ciudad="CABA",
+            descripcion="Refacción de patio cubierto y baños del colegio Domingo Savio.",
+            monto_contrato=12_500_000,
+            fecha_inicio=today - timedelta(days=45),
+            fecha_fin_estimada=today + timedelta(days=90),
+            estado=models.ObraStatus.EN_CURSO,
+            icono="🏫", color="#1E2B5E",
+            superficie_m2=350, pisos=1,
+        )
+        sp_obra = models.Obra(
+            codigo="SP", nombre="SP — Casa San Pedro",
+            cliente_id=cli_privado.id, regimen_fiscal_id=ri.id,
+            tipo_facturacion=models.TipoFacturacion.MIXTA,
+            direccion="Calle 12 nro 450", ciudad="San Pedro, BA",
+            descripcion="Construcción de casa de fin de semana, 180 m².",
+            monto_contrato=8_200_000,
+            fecha_inicio=today - timedelta(days=20),
+            fecha_fin_estimada=today + timedelta(days=120),
+            estado=models.ObraStatus.EN_CURSO,
+            icono="🏡", color="#3D4F1E",
+            superficie_m2=180, pisos=1,
+        )
+        db.add_all([ids_obra, sp_obra]); db.flush()
 
-        # Obras
-        obras_data = [
-            ("Torre Aurora", "TA-2026-01", "Av. del Libertador 4500", "CABA",
-             "Constructora del Sur SA", "Edificio residencial 18 pisos",
-             "#3B82F6", "🏙️", models.ObraStatus.en_obra, 4500000, 2800000,
-             date.today() - timedelta(days=120), date.today() + timedelta(days=180), 1200, 18),
-            ("Country Las Lomas", "CL-2026-02", "Ruta 8 km 45", "Pilar",
-             "Inmobiliaria Norte", "8 casas country", "#22C55E", "🏘️",
-             models.ObraStatus.en_obra, 2800000, 1100000,
-             date.today() - timedelta(days=60), date.today() + timedelta(days=240), 2400, 1),
-            ("Galpón Industrial", "GI-2026-03", "Parque Industrial 12", "Tigre",
-             "Logística Express", "Galpón 3000m2 con oficinas", "#F59E0B", "🏭",
-             models.ObraStatus.en_obra, 1900000, 1200000,
-             date.today() - timedelta(days=90), date.today() + timedelta(days=30), 3000, 2),
-            ("Local Comercial Centro", "LC-2026-04", "San Martín 1234", "Vicente López",
-             "Cliente Privado", "Refacción local 150m2", "#A855F7", "🏪",
-             models.ObraStatus.planificacion, 380000, 0,
-             date.today() + timedelta(days=15), date.today() + timedelta(days=90), 150, 1),
-            ("Casa Quincho", "CQ-2026-05", "Av. Costanera 88", "San Isidro",
-             "Familia Pérez", "Casa unifamiliar + quincho", "#EF4444", "🏡",
-             models.ObraStatus.finalizada, 850000, 845000,
-             date.today() - timedelta(days=240), date.today() - timedelta(days=10), 220, 2),
+        # ─── ETAPAS ───
+        ids_etapas = [
+            models.EtapaObra(obra_id=ids_obra.id, nombre="Anticipo", nro_etapa=0,
+                             monto_contractual=2_500_000, porcentaje_avance=20,
+                             estado=models.EtapaEstado.COBRADA,
+                             fecha_estimada=today - timedelta(days=40),
+                             fecha_cobro_real=today - timedelta(days=38),
+                             notas="Cobrado contra firma de contrato."),
+            models.EtapaObra(obra_id=ids_obra.id, nombre="Etapa 1 — Demolición y cimientos", nro_etapa=1,
+                             monto_contractual=4_000_000, porcentaje_avance=35,
+                             estado=models.EtapaEstado.EJECUTADA,
+                             fecha_estimada=today + timedelta(days=10),
+                             notas="Esperando certificación municipal."),
+            models.EtapaObra(obra_id=ids_obra.id, nombre="Etapa 2 — Terminaciones", nro_etapa=2,
+                             monto_contractual=4_500_000, porcentaje_avance=35,
+                             estado=models.EtapaEstado.PENDIENTE,
+                             fecha_estimada=today + timedelta(days=60)),
+            models.EtapaObra(obra_id=ids_obra.id, nombre="Final de obra", nro_etapa=3,
+                             monto_contractual=1_500_000, porcentaje_avance=10,
+                             estado=models.EtapaEstado.PENDIENTE,
+                             fecha_estimada=today + timedelta(days=90)),
         ]
-        obras = []
-        for n, cd, dr, ci, cl, ds, co, ic, st, pt, pc, fi, ff, sup, pi in obras_data:
-            o = models.Obra(
-                nombre=n, codigo=cd, direccion=dr, ciudad=ci, cliente=cl,
-                descripcion=ds, color=co, icono=ic, status=st,
-                presupuesto_total=pt, presupuesto_consumido=pc,
-                fecha_inicio=fi, fecha_fin_estimada=ff,
-                superficie_m2=sup, pisos=pi,
-            )
-            db.add(o); obras.append(o)
-        db.commit()
+        sp_etapas = [
+            models.EtapaObra(obra_id=sp_obra.id, nombre="Anticipo", nro_etapa=0,
+                             monto_contractual=2_000_000, porcentaje_avance=25,
+                             estado=models.EtapaEstado.COBRADA,
+                             fecha_cobro_real=today - timedelta(days=18)),
+            models.EtapaObra(obra_id=sp_obra.id, nombre="Etapa 1 — Estructura", nro_etapa=1,
+                             monto_contractual=3_500_000, porcentaje_avance=45,
+                             estado=models.EtapaEstado.EN_EJECUCION,
+                             fecha_estimada=today + timedelta(days=30)),
+            models.EtapaObra(obra_id=sp_obra.id, nombre="Final de obra", nro_etapa=2,
+                             monto_contractual=2_700_000, porcentaje_avance=30,
+                             estado=models.EtapaEstado.PENDIENTE,
+                             fecha_estimada=today + timedelta(days=110)),
+        ]
+        db.add_all(ids_etapas + sp_etapas); db.flush()
 
-        # Frentes para cada obra
-        frentes_torre = [
-            ("Cimientos", "cimientos", "🧱", models.FrenteEstado.completado, 100, 0),
-            ("Estructura piso 1-9", "estructura", "🏗️", models.FrenteEstado.completado, 100, 0),
-            ("Estructura piso 10-18", "estructura", "🏗️", models.FrenteEstado.en_progreso, 65, 0),
-            ("Mampostería", "mamposteria", "🧱", models.FrenteEstado.en_progreso, 40, 0),
-            ("Instalaciones eléctricas", "instalaciones", "⚡", models.FrenteEstado.en_progreso, 30, 1),
-            ("Instalaciones sanitarias", "instalaciones", "🚿", models.FrenteEstado.pendiente, 0, 2),
-            ("Terminaciones", "terminaciones", "🎨", models.FrenteEstado.pendiente, 0, 3),
-        ]
-        frentes_country = [
-            ("Movimiento de suelos", "cimientos", "🚜", models.FrenteEstado.completado, 100, 0),
-            ("Cimientos lotes 1-4", "cimientos", "🧱", models.FrenteEstado.completado, 100, 0),
-            ("Cimientos lotes 5-8", "cimientos", "🧱", models.FrenteEstado.en_progreso, 60, 0),
-            ("Estructura lotes 1-4", "estructura", "🏗️", models.FrenteEstado.en_progreso, 35, 0),
-            ("Mampostería lotes 1-4", "mamposteria", "🧱", models.FrenteEstado.pendiente, 0, None),
-        ]
-        frentes_galpon = [
-            ("Cimientos", "cimientos", "🧱", models.FrenteEstado.completado, 100, 0),
-            ("Estructura metálica", "estructura", "⚙️", models.FrenteEstado.completado, 100, 4),
-            ("Cubierta", "estructura", "🏗️", models.FrenteEstado.en_progreso, 80, 4),
-            ("Pisos industriales", "terminaciones", "⬜", models.FrenteEstado.en_progreso, 50, 0),
-            ("Instalaciones", "instalaciones", "⚡", models.FrenteEstado.pendiente, 10, 1),
-        ]
-        for o, lst in [(obras[0], frentes_torre), (obras[1], frentes_country), (obras[2], frentes_galpon)]:
-            for n, t, ic, est, prog, cidx in lst:
-                cuad_id = cuadrillas[cidx].id if cidx is not None else None
-                f = models.Frente(
-                    obra_id=o.id, nombre=n, tipo=t, icono=ic,
-                    estado=est, progreso=prog, cuadrilla_id=cuad_id,
-                )
-                db.add(f)
-        db.commit()
+        # ─── MOVIMIENTOS — IDS ───
+        db.add(models.MovimientoObra(
+            obra_id=ids_obra.id, etapa_id=ids_etapas[0].id,
+            fecha=today - timedelta(days=38),
+            tipo=models.TipoMovimiento.INGRESO,
+            origen_ingreso=models.OrigenIngreso.ANTICIPO_CLIENTE,
+            concepto="Anticipo Colegio Domingo Savio — Etapa 0",
+            monto=2_500_000, medio_pago=models.MedioPago.TRANSFERENCIA,
+            estado=models.EstadoMovimiento.CONFIRMADO,
+            hoja_fisica=f"Hoja 1 - {(today - timedelta(days=38)).isoformat()}",
+            cargado_por=admin.id,
+        ))
+        for i, w in enumerate([35, 28, 21, 14, 7]):
+            db.add(models.MovimientoObra(
+                obra_id=ids_obra.id, etapa_id=ids_etapas[1].id,
+                fecha=today - timedelta(days=w),
+                tipo=models.TipoMovimiento.EGRESO,
+                categoria_egreso=models.CategoriaEgreso.MANO_DE_OBRA,
+                concepto=f"Kevin Rodriguez — MO semana {i+1}",
+                monto=320_000, medio_pago=models.MedioPago.EFECTIVO,
+                estado=models.EstadoMovimiento.CONFIRMADO,
+                hoja_fisica=f"Hoja {i+2} - {(today - timedelta(days=w)).isoformat()}",
+                cargado_por=admin.id,
+            ))
+        comp_holcim = models.Comprobante(
+            obra_id=ids_obra.id,
+            tipo_comprobante=models.TipoComprobante.FC_A,
+            punto_venta=1, nro_comprobante="00001-00012345",
+            fecha_emision=today - timedelta(days=20),
+            cuit_emisor="30-50001234-5", cuit_receptor="30-50009999-9",
+            neto_gravado=380_000, neto_no_gravado=0, iva_21=79_800, iva_105=0,
+            total=459_800, cae="74123456789012",
+            cae_vencimiento=today + timedelta(days=10),
+            es_venta=False, estado_fiscal=models.EstadoFiscal.VALIDO,
+        )
+        db.add(comp_holcim); db.flush()
+        db.add(models.MovimientoObra(
+            obra_id=ids_obra.id, etapa_id=ids_etapas[1].id,
+            fecha=today - timedelta(days=20),
+            tipo=models.TipoMovimiento.EGRESO,
+            categoria_egreso=models.CategoriaEgreso.MATERIALES,
+            concepto="Hormigón Holcim — 30m³",
+            monto=459_800, medio_pago=models.MedioPago.TRANSFERENCIA,
+            comprobante_id=comp_holcim.id,
+            estado=models.EstadoMovimiento.CONFIRMADO,
+            hoja_fisica=f"Hoja 7 - {(today - timedelta(days=20)).isoformat()}",
+            cargado_por=admin.id,
+        ))
+        db.add(models.MovimientoObra(
+            obra_id=ids_obra.id, etapa_id=ids_etapas[1].id,
+            fecha=today - timedelta(days=5),
+            tipo=models.TipoMovimiento.EGRESO,
+            categoria_egreso=models.CategoriaEgreso.SUBCONTRATO,
+            concepto="Subcontrato instalación eléctrica",
+            monto=850_000, medio_pago=models.MedioPago.CHEQUE_PROPIO,
+            nro_cheque="00045123", banco="Banco Galicia",
+            fecha_vto_cheque=today + timedelta(days=15),
+            estado=models.EstadoMovimiento.A_REVISAR,
+            hoja_fisica=f"Hoja 8 - {(today - timedelta(days=5)).isoformat()}",
+            cargado_por=admin.id,
+        ))
 
-        # Refrescar progreso de obras
-        for o in obras[:3]:
-            frentes = db.query(models.Frente).filter(models.Frente.obra_id == o.id).all()
-            if frentes:
-                o.progreso = sum(f.progreso for f in frentes) / len(frentes)
-        db.commit()
+        # ─── APORTE EN SP + INGRESO ESPEJO ───
+        aporte = models.AporteSocio(
+            obra_id=sp_obra.id, socio_id=socio_a.id,
+            etapa_reintegro_id=sp_etapas[1].id,
+            fecha_aporte=today - timedelta(days=10),
+            monto=600_000,
+            motivo="Cubre déficit semana 09 — pago albañiles San Pedro",
+            medio_pago=models.MedioPago.TRANSFERENCIA,
+            estado_devolucion=models.EstadoDevolucion.PENDIENTE,
+            monto_devuelto=0,
+        )
+        db.add(aporte); db.flush()
+        db.add(models.MovimientoObra(
+            obra_id=sp_obra.id, etapa_id=sp_etapas[1].id,
+            fecha=aporte.fecha_aporte,
+            tipo=models.TipoMovimiento.INGRESO,
+            origen_ingreso=models.OrigenIngreso.APORTE_SOCIO_RCA,
+            concepto=f"Aporte de socio: {aporte.motivo}",
+            monto=aporte.monto, medio_pago=aporte.medio_pago,
+            aporte_socio_id=aporte.id,
+            estado=models.EstadoMovimiento.CONFIRMADO,
+            canal=models.CanalCarga.automatico,
+            cargado_por=admin.id,
+        ))
 
-        # Eventos varios
-        eventos_data = [
-            (obras[0].id, models.EventoTipo.material_llegada, "Llegada hormigón H21", "30m3 para piso 11", False),
-            (obras[0].id, models.EventoTipo.avance, "Encofrado piso 11 listo", "Cuadrilla Los Maestros", False),
-            (obras[0].id, models.EventoTipo.incidente, "Falta cemento crítico", "Stock bajo, urgente reponer", True),
-            (obras[1].id, models.EventoTipo.hito, "Cimientos lote 4 completados", "Hito 25% obra", False),
-            (obras[1].id, models.EventoTipo.foto, "Foto avance lotes 1-4", None, False),
-            (obras[2].id, models.EventoTipo.inspeccion, "Inspección municipal", "Programada para viernes", False),
-            (obras[2].id, models.EventoTipo.avance, "Cubierta 80%", "Faltan 20m2", False),
-            (obras[0].id, models.EventoTipo.incidente, "Demora entrega hierro", "Proveedor avisó +3 días", True),
-        ]
-        for oid, t, tit, desc, cr in eventos_data:
-            e = models.Evento(
-                obra_id=oid, tipo=t, titulo=tit, descripcion=desc,
-                es_critico=cr, canal=models.CanalCarga.whatsapp, usuario_id=admin.id,
-            )
-            db.add(e)
-        db.commit()
+        # SP movimientos
+        db.add(models.MovimientoObra(
+            obra_id=sp_obra.id, etapa_id=sp_etapas[0].id,
+            fecha=today - timedelta(days=18),
+            tipo=models.TipoMovimiento.INGRESO,
+            origen_ingreso=models.OrigenIngreso.ANTICIPO_CLIENTE,
+            concepto="Anticipo San Pedro",
+            monto=2_000_000, medio_pago=models.MedioPago.TRANSFERENCIA,
+            cargado_por=admin.id,
+        ))
+        db.add(models.MovimientoObra(
+            obra_id=sp_obra.id, etapa_id=sp_etapas[1].id,
+            fecha=today - timedelta(days=8),
+            tipo=models.TipoMovimiento.EGRESO,
+            categoria_egreso=models.CategoriaEgreso.MATERIALES,
+            concepto="Ladrillos 5000 unidades",
+            monto=380_000, medio_pago=models.MedioPago.EFECTIVO,
+            estado=models.EstadoMovimiento.CONFIRMADO,
+            hoja_fisica=f"SP-Hoja 3 - {(today - timedelta(days=8)).isoformat()}",
+            cargado_por=admin.id,
+        ))
+        db.add(models.MovimientoObra(
+            obra_id=sp_obra.id, etapa_id=sp_etapas[1].id,
+            fecha=today - timedelta(days=3),
+            tipo=models.TipoMovimiento.EGRESO,
+            categoria_egreso=models.CategoriaEgreso.MANO_DE_OBRA,
+            concepto="Albañiles San Pedro — semana",
+            monto=480_000, medio_pago=models.MedioPago.EFECTIVO,
+            estado=models.EstadoMovimiento.CONFIRMADO,
+            cargado_por=admin.id,
+        ))
 
-        # Órdenes de trabajo
-        ordenes_data = [
-            (obras[0].id, "Hormigonar piso 11", "Espera hormigón H21 a las 9am", "alta", 0, 30),
-            (obras[0].id, "Tirar cables piso 5", "Instalación eléctrica completa", "normal", 1, 20),
-            (obras[1].id, "Encofrar lote 5", "Preparar para hormigonada", "normal", 0, 15),
-            (obras[1].id, "Cargar camión áridos", "10m3 arena para cimientos", "baja", 0, 10),
-            (obras[2].id, "Pintar paredes oficina", "Color blanco hueso", "baja", 3, 10),
-            (obras[2].id, "Resolver gotera techo", "Filtración detectada en sector NE", "critica", 4, 50),
-        ]
-        for oid, t, d, p, cidx, xp in ordenes_data:
-            ord_ = models.OrdenTrabajo(
-                obra_id=oid, titulo=t, descripcion=d, prioridad=p,
-                cuadrilla_id=cuadrillas[cidx].id, xp_reward=xp,
-                creada_por_id=admin.id, canal_creacion=models.CanalCarga.web,
-                fecha_limite=date.today() + timedelta(days=2),
-            )
-            db.add(ord_)
-        db.commit()
+        # ─── CAPA LÚDICA / OPERATIVA ───
+        cuad_a = models.Cuadrilla(
+            nombre="Los Maestros", especialidad="albañilería", avatar="🧱",
+            cantidad_miembros=4, nivel=3, experiencia=850, eficiencia=88,
+            capataz_id=capataz.id, telefono="+5491100000004",
+        )
+        cuad_b = models.Cuadrilla(
+            nombre="Volt Power", especialidad="electricidad", avatar="⚡",
+            cantidad_miembros=2, nivel=2, experiencia=420, eficiencia=92,
+        )
+        db.add_all([cuad_a, cuad_b]); db.flush()
+        db.add_all([
+            models.Frente(obra_id=ids_obra.id, nombre="Cimientos", tipo="cimientos",
+                          icono="🟫", estado=models.FrenteEstado.completado,
+                          progreso=100, cuadrilla_id=cuad_a.id),
+            models.Frente(obra_id=ids_obra.id, nombre="Mampostería", tipo="mamposteria",
+                          icono="🧱", estado=models.FrenteEstado.en_progreso,
+                          progreso=60, cuadrilla_id=cuad_a.id),
+            models.Frente(obra_id=ids_obra.id, nombre="Instalaciones eléctricas", tipo="instalaciones",
+                          icono="⚡", estado=models.FrenteEstado.pendiente,
+                          progreso=10, cuadrilla_id=cuad_b.id),
+            models.Frente(obra_id=sp_obra.id, nombre="Estructura", tipo="estructura",
+                          icono="⬛", estado=models.FrenteEstado.en_progreso,
+                          progreso=40, cuadrilla_id=cuad_a.id),
+        ])
+        db.add_all([
+            models.Proveedor(nombre="Holcim", cuit="30-50001234-5", rubro="cemento",
+                             rating=4.7, plazo_entrega_dias=2, telefono="11-4555-1111"),
+            models.Proveedor(nombre="Acindar", cuit="30-50001235-6", rubro="hierro",
+                             rating=4.5, plazo_entrega_dias=4),
+            models.Proveedor(nombre="Pinturería Argento", rubro="pinturas",
+                             rating=4.2, plazo_entrega_dias=3),
+            models.Proveedor(nombre="Eléctrica Sur", rubro="electricidad",
+                             rating=4.0, plazo_entrega_dias=5, moroso=True),
+        ])
+        db.add_all([
+            models.Material(nombre="Cemento Holcim", categoria="cemento", unidad="bolsa",
+                            stock=120, stock_minimo=50, precio_unitario=8500, icono="🧱"),
+            models.Material(nombre="Hierro 8mm", categoria="hierro", unidad="barra",
+                            stock=18, stock_minimo=30, precio_unitario=12000, icono="🔩"),
+            models.Material(nombre="Ladrillos comunes", categoria="ladrillo", unidad="u",
+                            stock=4500, stock_minimo=1000, precio_unitario=180, icono="🧱"),
+            models.Material(nombre="Pintura látex 20L", categoria="terminaciones", unidad="balde",
+                            stock=4, stock_minimo=10, precio_unitario=85000, icono="🎨"),
+        ])
+        db.add_all([
+            models.Evento(obra_id=ids_obra.id, tipo=models.EventoTipo.material_llegada,
+                          titulo="Llegó hormigón Holcim", descripcion="30m³ recibidos en obra.",
+                          es_critico=False, usuario_id=capataz.id),
+            models.Evento(obra_id=ids_obra.id, tipo=models.EventoTipo.incidente,
+                          titulo="Demora en certificación municipal",
+                          descripcion="Esperando inspección desde hace 5 días.",
+                          es_critico=True, usuario_id=admin.id),
+            models.Evento(obra_id=sp_obra.id, tipo=models.EventoTipo.avance,
+                          titulo="Estructura al 40%", es_critico=False, usuario_id=capataz.id),
+        ])
 
-        # Gastos
-        gastos_data = [
-            (obras[0].id, proveedores[0].id, "Materiales", 850000, "Cemento + cal mes 1"),
-            (obras[0].id, proveedores[1].id, "Materiales", 1200000, "Hierro estructura"),
-            (obras[0].id, None, "Mano de obra", 450000, "Cuadrilla Los Maestros 2 semanas"),
-            (obras[0].id, None, "Servicios", 80000, "Alquiler grúa"),
-            (obras[1].id, proveedores[2].id, "Materiales", 320000, "Ladrillos primer lote"),
-            (obras[1].id, None, "Mano de obra", 280000, "Movimiento suelos"),
-            (obras[2].id, proveedores[1].id, "Materiales", 680000, "Estructura metálica"),
-            (obras[2].id, None, "Mano de obra", 320000, "Iron Crew estructura"),
-        ]
-        for oid, pid, cat, m, d in gastos_data:
-            g = models.Gasto(
-                obra_id=oid, proveedor_id=pid, categoria=cat, monto=m,
-                descripcion=d, pagado=True, fecha=date.today() - timedelta(days=15),
-            )
-            db.add(g)
         db.commit()
-
-        print("[OK] Seed completado!")
-        print(f"   Login: admin@demo.com / demo1234")
-        print(f"   {len(obras)} obras, {len(cuadrillas)} cuadrillas, {len(proveedores)} proveedores")
-        print(f"   {len(materiales_data)} materiales, {len(eventos_data)} eventos, {len(ordenes_data)} órdenes")
+        print("[seed] OK — datos demo cargados.")
+        print(f"   Login: admin@rca.com / demo1234")
+        print(f"   2 obras (IDS, SP), 7 etapas, 13+ movimientos, 1 aporte de socio.")
     finally:
         db.close()
 

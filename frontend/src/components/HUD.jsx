@@ -36,10 +36,10 @@ export default function HUD() {
         {/* Stats — minimal, separados por respiración no por líneas */}
         {hud && (
           <div className="hidden lg:flex items-center gap-7 text-[12px] font-medium">
-            <Stat label="Disponible" value={fmtMoney(hud.presupuesto_total - hud.presupuesto_consumido)} />
+            <Stat label="Saldo" value={fmtMoney(hud.saldo_global ?? 0)} accent={(hud.saldo_global ?? 0) >= 0} />
             <Stat label="Obras" value={hud.obras_activas} />
-            <Stat label="Equipo" value={`${hud.obreros_total}`} />
-            <Stat label="Productividad" value={`${hud.productividad}%`} accent />
+            <Stat label="Cheques" value={fmtMoney(hud.cheques_a_vencer ?? 0)} />
+            <Stat label="Aportes" value={fmtMoney(hud.aportes_pendientes ?? 0)} />
             {hud.alertas_total > 0 && (
               <button onClick={() => nav('/feed')}
                 className="flex items-center gap-1.5 text-danger hover:opacity-70 transition">

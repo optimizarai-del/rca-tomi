@@ -67,14 +67,14 @@ export default function ObraDetail() {
                 <span className="text-[11px] uppercase tracking-[0.2em] font-semibold text-olive-700">{obra.codigo}</span>
                 <span className="w-1 h-1 rounded-full bg-muted/50"/>
                 <span className="text-xs uppercase tracking-wider text-muted capitalize">
-                  {obra.status.replace('_',' ')}
+                  {(obra.estado || '').replace('_',' ').toLowerCase()}
                 </span>
               </div>
               <h1 className="hero-title text-5xl md:text-6xl mb-4">{obra.nombre}</h1>
               <p className="text-muted text-lg mb-2 flex items-center gap-2">
                 <MapPin size={14}/> {obra.ciudad || obra.direccion}
               </p>
-              {obra.cliente && <p className="text-muted text-sm mb-6">Cliente · <span className="text-navy">{obra.cliente}</span></p>}
+              {dashboard?.cliente_nombre && <p className="text-muted text-sm mb-6">Cliente · <span className="text-navy">{dashboard.cliente_nombre}</span></p>}
               {obra.descripcion && <p className="text-navy/80 text-base leading-relaxed max-w-xl mb-8">{obra.descripcion}</p>}
 
               <div className="inline-flex items-center gap-2 bg-white border border-border rounded-full px-4 py-2 mb-8">

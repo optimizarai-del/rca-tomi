@@ -17,6 +17,18 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
+# Roles que se consideran "admin" para gating
+ADMIN_ROLES = {
+    models.UserRole.super_admin,
+    models.UserRole.admin,
+    models.UserRole.admin_finanzas,
+}
+FINANZAS_ROLES = {
+    models.UserRole.super_admin,
+    models.UserRole.admin_finanzas,
+}
+
+
 def hash_password(p: str) -> str:
     return pwd_context.hash(p)
 
@@ -49,12 +61,12 @@ def get_current_user(
 
 
 def require_admin(user: models.User = Depends(get_current_user)) -> models.User:
-    if user.role not in (models.UserRole.admin, models.UserRole.admin_finanzas):
+    if user.role not in ADMIN_ROLES:
         raise HTTPException(403, "Requiere rol administrador")
     return user
 
 
 def require_finanzas(user: models.User = Depends(get_current_user)) -> models.User:
-    if user.role != models.UserRole.admin_finanzas:
+    if user.role not in FINANZAS_ROLES:
         raise HTTPException(403, "Requiere acceso a finanzas")
     return user

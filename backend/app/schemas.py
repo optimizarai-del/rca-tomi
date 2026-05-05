@@ -1,13 +1,20 @@
 from datetime import datetime, date
+from decimal import Decimal
 from typing import Optional, List
 from pydantic import BaseModel, EmailStr, Field
 from app.models import (
     UserRole, UserStatus, ObraStatus, ObraSalud, FrenteEstado,
-    TaskStatus, EventoTipo, CanalCarga
+    TaskStatus, EventoTipo, CanalCarga,
+    TipoFacturacion, EtapaEstado, TipoMovimiento, OrigenIngreso,
+    CategoriaEgreso, MedioPago, EstadoMovimiento, EstadoDevolucion,
+    TipoComprobante, EstadoFiscal, TipoRetencion,
 )
 
 
-# ─── Auth ───
+# ════════════════════════════════════════════════════════════════════
+# AUTH / USER
+# ════════════════════════════════════════════════════════════════════
+
 class UserBase(BaseModel):
     name: str
     last_name: Optional[str] = None
@@ -49,29 +56,96 @@ class UserRoleUpdate(BaseModel):
     role: UserRole
 
 
-# ─── Obra ───
-class ObraIn(BaseModel):
+# ════════════════════════════════════════════════════════════════════
+# RÉGIMEN FISCAL
+# ════════════════════════════════════════════════════════════════════
+
+class RegimenFiscalIn(BaseModel):
+    codigo: str
     nombre: str
-    codigo: Optional[str] = None
+    iva_default: float = 0.21
+    aplica_iibb: bool = True
+    aplica_ganancias: bool = True
+    descripcion: Optional[str] = None
+
+
+class RegimenFiscalOut(RegimenFiscalIn):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# CLIENTE
+# ════════════════════════════════════════════════════════════════════
+
+class ClienteIn(BaseModel):
+    nombre: str
+    cuit: Optional[str] = None
+    razon_social: Optional[str] = None
+    direccion: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    tipo: Optional[str] = None  # publico, privado_ri, privado_mt, particular
+    regimen_fiscal_id: Optional[int] = None
+    notas: Optional[str] = None
+    activo: bool = True
+
+
+class ClienteOut(ClienteIn):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# OBRA
+# ════════════════════════════════════════════════════════════════════
+
+class ObraIn(BaseModel):
+    codigo: str
+    nombre: str
+    cliente_id: int
+    regimen_fiscal_id: Optional[int] = None
+    tipo_facturacion: TipoFacturacion = TipoFacturacion.SIN_DEFINIR
+
     direccion: Optional[str] = None
     ciudad: Optional[str] = None
-    cliente: Optional[str] = None
     descripcion: Optional[str] = None
-    color: str = "#3B82F6"
-    icono: str = "🏗️"
-    status: ObraStatus = ObraStatus.planificacion
-    presupuesto_total: float = 0
+    monto_contrato: Optional[float] = None
     fecha_inicio: Optional[date] = None
     fecha_fin_estimada: Optional[date] = None
+    estado: ObraStatus = ObraStatus.EN_CURSO
+
+    color: str = "#1E2B5E"
+    icono: str = "🏗️"
     superficie_m2: float = 0
     pisos: int = 1
 
 
-class ObraOut(ObraIn):
+class ObraOut(BaseModel):
     id: int
+    codigo: str
+    nombre: str
+    cliente_id: int
+    regimen_fiscal_id: Optional[int] = None
+    tipo_facturacion: TipoFacturacion
+    direccion: Optional[str] = None
+    ciudad: Optional[str] = None
+    descripcion: Optional[str] = None
+    monto_contrato: Optional[float] = None
+    fecha_inicio: Optional[date] = None
+    fecha_fin_estimada: Optional[date] = None
+    estado: ObraStatus
     salud: ObraSalud
     progreso: float
-    presupuesto_consumido: float
+    color: str
+    icono: str
+    superficie_m2: float
+    pisos: int
     created_at: datetime
 
     class Config:
@@ -79,8 +153,17 @@ class ObraOut(ObraIn):
 
 
 class ObraDashboard(BaseModel):
-    """Resumen rico de una obra para la vista micro-mundo."""
+    """Resumen rico de una obra."""
     obra: ObraOut
+    cliente_nombre: Optional[str] = None
+    # Financiero
+    monto_contrato: float
+    total_ingresos: float
+    total_egresos: float
+    saldo: float
+    aportes_pendientes: float
+    cheques_a_vencer: float
+    # Operativo / lúdico
     frentes_total: int
     frentes_completados: int
     cuadrillas_activas: int
@@ -88,11 +171,213 @@ class ObraDashboard(BaseModel):
     eventos_recientes: int
     alertas: int
     ordenes_pendientes: int
-    presupuesto_pct: float
     dias_restantes: Optional[int] = None
+    # Etapas
+    etapas_total: int
+    etapas_cobradas: int
 
 
-# ─── Frente ───
+# ════════════════════════════════════════════════════════════════════
+# ETAPAS
+# ════════════════════════════════════════════════════════════════════
+
+class EtapaIn(BaseModel):
+    obra_id: int
+    nombre: str
+    nro_etapa: int
+    monto_contractual: Optional[float] = None
+    porcentaje_avance: Optional[float] = None
+    estado: EtapaEstado = EtapaEstado.PENDIENTE
+    fecha_estimada: Optional[date] = None
+    fecha_cobro_real: Optional[date] = None
+    notas: Optional[str] = None
+
+
+class EtapaOut(EtapaIn):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# MOVIMIENTOS — TABLA CENTRAL
+# ════════════════════════════════════════════════════════════════════
+
+class MovimientoIn(BaseModel):
+    obra_id: int
+    etapa_id: Optional[int] = None
+    fecha: date
+    tipo: TipoMovimiento
+    origen_ingreso: Optional[OrigenIngreso] = None
+    categoria_egreso: Optional[CategoriaEgreso] = None
+    concepto: str
+    monto: float = Field(gt=0)
+    medio_pago: MedioPago
+    nro_cheque: Optional[str] = None
+    banco: Optional[str] = None
+    fecha_vto_cheque: Optional[date] = None
+    comprobante_id: Optional[int] = None
+    aporte_socio_id: Optional[int] = None
+    proveedor_id: Optional[int] = None
+    estado: EstadoMovimiento = EstadoMovimiento.CONFIRMADO
+    hoja_fisica: Optional[str] = None
+    canal: CanalCarga = CanalCarga.web
+
+
+class MovimientoOut(BaseModel):
+    id: int
+    obra_id: int
+    etapa_id: Optional[int] = None
+    fecha: date
+    tipo: TipoMovimiento
+    origen_ingreso: Optional[OrigenIngreso] = None
+    categoria_egreso: Optional[CategoriaEgreso] = None
+    concepto: str
+    monto: float
+    medio_pago: MedioPago
+    bancarizado: bool
+    nro_cheque: Optional[str] = None
+    banco: Optional[str] = None
+    fecha_vto_cheque: Optional[date] = None
+    tiene_comprobante: bool
+    comprobante_id: Optional[int] = None
+    aporte_socio_id: Optional[int] = None
+    proveedor_id: Optional[int] = None
+    estado: EstadoMovimiento
+    hoja_fisica: Optional[str] = None
+    canal: CanalCarga
+    cargado_por: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class FlujoCajaSemana(BaseModel):
+    semana: date
+    ingresos: float
+    egresos: float
+    saldo_semana: float
+    saldo_acumulado: float
+
+
+# ════════════════════════════════════════════════════════════════════
+# APORTES
+# ════════════════════════════════════════════════════════════════════
+
+class AporteIn(BaseModel):
+    obra_id: int
+    socio_id: int
+    etapa_reintegro_id: Optional[int] = None
+    fecha_aporte: date
+    monto: float = Field(gt=0)
+    motivo: str
+    medio_pago: MedioPago
+    notas: Optional[str] = None
+
+
+class AporteOut(AporteIn):
+    id: int
+    estado_devolucion: EstadoDevolucion
+    monto_devuelto: float
+    fecha_devolucion: Optional[date] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AporteDevolucionIn(BaseModel):
+    monto: float = Field(gt=0)
+    fecha: date
+    medio_pago: MedioPago
+    notas: Optional[str] = None
+
+
+# ════════════════════════════════════════════════════════════════════
+# COMPROBANTES
+# ════════════════════════════════════════════════════════════════════
+
+class ComprobanteIn(BaseModel):
+    obra_id: int
+    tipo_comprobante: TipoComprobante
+    punto_venta: Optional[int] = None
+    nro_comprobante: str
+    fecha_emision: date
+    cuit_emisor: str
+    cuit_receptor: str
+    neto_gravado: float = 0
+    neto_no_gravado: float = 0
+    iva_21: float = 0
+    iva_105: float = 0
+    total: float
+    cae: Optional[str] = None
+    cae_vencimiento: Optional[date] = None
+    es_venta: bool
+    estado_fiscal: EstadoFiscal = EstadoFiscal.VALIDO
+    archivo_url: Optional[str] = None
+    notas: Optional[str] = None
+
+
+class ComprobanteOut(ComprobanteIn):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# RETENCIONES
+# ════════════════════════════════════════════════════════════════════
+
+class RetencionIn(BaseModel):
+    movimiento_id: int
+    obra_id: int
+    tipo_retencion: TipoRetencion
+    alicuota: float
+    base_calculo: float
+    monto_retenido: float
+    nro_constancia: Optional[str] = None
+    fecha_retencion: date
+    agente_retencion: Optional[str] = None
+    cuit_agente: Optional[str] = None
+
+
+class RetencionOut(RetencionIn):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# NOTAS
+# ════════════════════════════════════════════════════════════════════
+
+class NotaIn(BaseModel):
+    obra_id: int
+    movimiento_id: Optional[int] = None
+    texto: str
+    importante: bool = False
+
+
+class NotaOut(NotaIn):
+    id: int
+    autor_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
+# CAPA LÚDICA / OPERATIVA (sin cambios mayores)
+# ════════════════════════════════════════════════════════════════════
+
 class FrenteIn(BaseModel):
     obra_id: int
     nombre: str
@@ -113,7 +398,6 @@ class FrenteOut(FrenteIn):
         from_attributes = True
 
 
-# ─── Cuadrilla ───
 class CuadrillaIn(BaseModel):
     nombre: str
     especialidad: Optional[str] = None
@@ -135,7 +419,6 @@ class CuadrillaOut(CuadrillaIn):
         from_attributes = True
 
 
-# ─── Material ───
 class MaterialIn(BaseModel):
     nombre: str
     categoria: Optional[str] = None
@@ -154,14 +437,13 @@ class MaterialOut(MaterialIn):
         from_attributes = True
 
 
-class MovimientoIn(BaseModel):
+class MovimientoMaterialIn(BaseModel):
     tipo: str
     cantidad: float
     obra_id: Optional[int] = None
     nota: Optional[str] = None
 
 
-# ─── Proveedor ───
 class ProveedorIn(BaseModel):
     nombre: str
     cuit: Optional[str] = None
@@ -181,7 +463,6 @@ class ProveedorOut(ProveedorIn):
         from_attributes = True
 
 
-# ─── Orden de Trabajo ───
 class OrdenIn(BaseModel):
     obra_id: int
     frente_id: Optional[int] = None
@@ -212,7 +493,6 @@ class OrdenOut(BaseModel):
         from_attributes = True
 
 
-# ─── Evento ───
 class EventoIn(BaseModel):
     obra_id: Optional[int] = None
     frente_id: Optional[int] = None
@@ -240,27 +520,10 @@ class EventoOut(BaseModel):
         from_attributes = True
 
 
-# ─── Gasto ───
-class GastoIn(BaseModel):
-    obra_id: Optional[int] = None
-    proveedor_id: Optional[int] = None
-    categoria: str
-    monto: float
-    moneda: str = "ARS"
-    con_iva: bool = True
-    descripcion: Optional[str] = None
-    fecha: Optional[date] = None
-    pagado: bool = False
+# ════════════════════════════════════════════════════════════════════
+# WHATSAPP / HUD
+# ════════════════════════════════════════════════════════════════════
 
-
-class GastoOut(GastoIn):
-    id: int
-
-    class Config:
-        from_attributes = True
-
-
-# ─── Webhook ───
 class WhatsAppMessageIn(BaseModel):
     phone: str
     text: str
@@ -268,14 +531,20 @@ class WhatsAppMessageIn(BaseModel):
     foto_url: Optional[str] = None
 
 
-# ─── HUD Global ───
 class HudGlobal(BaseModel):
-    presupuesto_total: float
-    presupuesto_consumido: float
+    # Financiero (calculado de movimientos_obra)
+    monto_contratos_total: float
+    total_ingresos: float
+    total_egresos: float
+    saldo_global: float
+    aportes_pendientes: float
+    cheques_a_vencer: float
+    # Operativo
+    obras_total: int
+    obras_activas: int
+    cuadrillas_activas: int
+    obreros_total: int
     materiales_total: int
     materiales_criticos: int
-    obreros_total: int
-    cuadrillas_activas: int
-    obras_activas: int
-    productividad: float  # avg eficiencia
+    productividad: float
     alertas_total: int
