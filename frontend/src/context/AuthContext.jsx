@@ -38,8 +38,8 @@ export function AuthProvider({ children }) {
     setUser(data)
   }
 
-  const isAdmin = user?.role === 'admin' || user?.role === 'admin_finanzas'
-  const hasFinanzas = user?.role === 'admin_finanzas'
+  const isAdmin = ['super_admin', 'admin', 'admin_finanzas'].includes(user?.role)
+  const hasFinanzas = ['super_admin', 'admin_finanzas'].includes(user?.role)
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, isAdmin, hasFinanzas }}>

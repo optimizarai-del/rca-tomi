@@ -9,6 +9,10 @@ import Proveedores from './pages/Proveedores'
 import Ordenes from './pages/Ordenes'
 import Feed from './pages/Feed'
 import Finanzas from './pages/Finanzas'
+import Movimientos from './pages/Movimientos'
+import Aportes from './pages/Aportes'
+import Comprobantes from './pages/Comprobantes'
+import Clientes from './pages/Clientes'
 import Equipo from './pages/Equipo'
 import Layout from './components/Layout/Layout'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
@@ -30,6 +34,10 @@ export default function App() {
       <Route path="/ordenes" element={<P><Ordenes /></P>} />
       <Route path="/feed" element={<P><Feed /></P>} />
       <Route path="/finanzas" element={<P requireFinanzas><Finanzas /></P>} />
+      <Route path="/movimientos" element={<P requireFinanzas><Movimientos /></P>} />
+      <Route path="/aportes" element={<P requireFinanzas><Aportes /></P>} />
+      <Route path="/comprobantes" element={<P requireFinanzas><Comprobantes /></P>} />
+      <Route path="/clientes" element={<P requireFinanzas><Clientes /></P>} />
       <Route path="/equipo" element={<P requireAdmin><Equipo /></P>} />
       <Route path="/" element={<Navigate to="/world" replace />} />
       <Route path="*" element={<Navigate to="/world" replace />} />

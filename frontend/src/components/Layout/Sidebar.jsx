@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutGrid, Users, Package, Truck, ClipboardList,
-  DollarSign, Activity, UserCog,
+  DollarSign, Activity, UserCog, ArrowLeftRight, HandCoins, FileText, Building2,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -41,7 +41,11 @@ export default function Sidebar() {
       {hasFinanzas && (
         <>
           <div className="section-label">Finanzas</div>
-          <NavLink to="/finanzas" className={link}><DollarSign size={15} strokeWidth={1.8}/> Presupuestos</NavLink>
+          <NavLink to="/finanzas" className={link}><DollarSign size={15} strokeWidth={1.8}/> Resumen</NavLink>
+          <NavLink to="/movimientos" className={link}><ArrowLeftRight size={15} strokeWidth={1.8}/> Movimientos</NavLink>
+          <NavLink to="/aportes" className={link}><HandCoins size={15} strokeWidth={1.8}/> Aportes</NavLink>
+          <NavLink to="/comprobantes" className={link}><FileText size={15} strokeWidth={1.8}/> Comprobantes</NavLink>
+          <NavLink to="/clientes" className={link}><Building2 size={15} strokeWidth={1.8}/> Clientes</NavLink>
         </>
       )}
 
