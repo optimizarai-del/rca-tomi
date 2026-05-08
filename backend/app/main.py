@@ -7,6 +7,7 @@ from app.routers import (
     auth, users, obras, cuadrillas, materiales, proveedores,
     ordenes, eventos, dashboard, whatsapp, agent,
     clientes, regimenes_fiscales, etapas, movimientos, aportes, comprobantes,
+    notifications, approval,
 )
 
 load_dotenv(override=True)
@@ -29,7 +30,7 @@ ROUTERS = [
     obras, etapas,
     movimientos, aportes, comprobantes,
     cuadrillas, materiales, proveedores, ordenes, eventos,
-    dashboard, whatsapp, agent,
+    dashboard, whatsapp, agent, notifications, approval,
 ]
 
 for r in ROUTERS:

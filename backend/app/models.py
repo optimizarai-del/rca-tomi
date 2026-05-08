@@ -157,6 +157,14 @@ class AgentActionStatus(str, Enum):
     cancelled = "cancelled"
 
 
+class OutboundMessageStatus(str, Enum):
+    """Estado de un mensaje saliente (WhatsApp / SMS / Email)."""
+    log_only = "log_only"  # provider en modo log_only — no se envió, queda registrado
+    pending = "pending"    # encolado pero aún no enviado
+    sent = "sent"          # confirmación del provider
+    failed = "failed"      # falló el envío
+
+
 # Capa lúdica
 class FrenteEstado(str, Enum):
     pendiente = "pendiente"
@@ -652,3 +660,37 @@ class AgentAction(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
     confirmer = relationship("User", foreign_keys=[confirmed_by])
+
+
+# ════════════════════════════════════════════════════════════════════
+# WHATSAPP OUTBOUND (Sprint 4)
+# ════════════════════════════════════════════════════════════════════
+
+class OutboundMessage(Base):
+    """Registro de cada mensaje que sale de la plataforma (WhatsApp por ahora).
+
+    Soporta múltiples providers (log_only por defecto, twilio, cloud_api).
+    Si el provider es log_only, el mensaje se persiste con status=log_only y
+    NO se envía. Si es twilio/cloud_api, se hace la llamada y se actualiza el
+    status según el resultado.
+    """
+    __tablename__ = "outbound_messages"
+    id = Column(Integer, primary_key=True)
+    canal = Column(String, default="whatsapp", nullable=False)
+    destinatario = Column(String, nullable=False, index=True)  # +5491100000000
+    mensaje = Column(Text, nullable=False)
+    foto_url = Column(String)
+    provider = Column(String, nullable=False)  # log_only / twilio / cloud_api
+    status = Column(SQLEnum(OutboundMessageStatus), default=OutboundMessageStatus.pending, nullable=False, index=True)
+    provider_message_id = Column(String)  # SID de Twilio, ID de Cloud API, etc.
+    error = Column(Text)
+    # Contexto: por qué se envió esto
+    notification_type = Column(String, index=True)  # cheque_venciendo / evento_critico / semanal / asignacion / agente_ia / manual / approval / slash_response
+    # Idempotency key: opcional, sirve para dedupear notificaciones automáticas.
+    # Ej: cheque_venciendo:movimiento=42:vto=2026-05-23
+    context_key = Column(String, index=True)
+    obra_id = Column(Integer, ForeignKey("obras.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    related_action_id = Column(Integer, ForeignKey("agent_actions.id"))
+    sent_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

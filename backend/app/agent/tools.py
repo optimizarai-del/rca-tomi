@@ -733,25 +733,40 @@ def t_registrar_aporte_socio(input: dict, user: models.User, db: Session) -> dic
 
 
 def t_enviar_whatsapp(input: dict, user: models.User, db: Session) -> dict:
-    """STUB de Sprint 4. No envía nada real todavía: registra el intent en el audit log
-    (vía AgentAction que ya persiste el orchestrator) y devuelve un mock.
+    """Envía un mensaje de WhatsApp al destinatario indicado.
 
-    Sprint 4 va a integrar Twilio o WhatsApp Cloud API. La firma de esta tool ya está
-    estable para que cuando llegue, solo cambie la implementación interna.
+    Usa el adapter `whatsapp_sender` que respeta `WHATSAPP_PROVIDER`:
+        - log_only (default): registra en outbound_messages con status=log_only.
+        - twilio / cloud_api: envía de verdad si las credenciales están en .env.
     """
+    from app.whatsapp_sender import send_whatsapp
     telefono = (input.get("telefono") or "").strip()
     if not telefono:
         return {"error": "Falta 'telefono' (formato +5491100000000)"}
     mensaje = (input.get("mensaje") or "").strip()
     if not mensaje:
         return {"error": "Falta 'mensaje'"}
+
+    obra_ref = input.get("obra_ref")
+    obra_id = None
+    if obra_ref:
+        obra = _obra_by_ref(obra_ref, db)
+        if obra:
+            obra_id = obra.id
+
+    msg = send_whatsapp(
+        db, telefono, mensaje,
+        notification_type="agente_ia",
+        obra_id=obra_id,
+        user_id=user.id,
+    )
     return {
-        "ok": True,
-        "stub": True,
-        "destinatario": telefono,
-        "mensaje_preview": mensaje[:200],
-        "obra_ref": input.get("obra_ref"),
-        "nota": "Sprint 4 va a integrar Twilio/WhatsApp Cloud API. Por ahora el envío queda registrado en agent_actions pero no se entrega.",
+        "ok": msg.status != models.OutboundMessageStatus.failed,
+        "outbound_id": msg.id,
+        "destinatario": msg.destinatario,
+        "provider": msg.provider,
+        "status": msg.status.value,
+        "error": msg.error,
     }
 
 

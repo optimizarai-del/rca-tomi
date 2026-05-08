@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutGrid, Users, Package, Truck, ClipboardList,
   DollarSign, Activity, UserCog, ArrowLeftRight, HandCoins, FileText, Building2,
+  MessageSquare,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -53,6 +54,7 @@ export default function Sidebar() {
         <>
           <div className="section-label">Administración</div>
           <NavLink to="/equipo" className={link}><UserCog size={15} strokeWidth={1.8}/> Usuarios</NavLink>
+          <NavLink to="/mensajes" className={link}><MessageSquare size={15} strokeWidth={1.8}/> Mensajes</NavLink>
         </>
       )}
 
