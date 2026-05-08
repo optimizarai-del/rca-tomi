@@ -143,6 +143,20 @@ class CanalCarga(str, Enum):
     agente_ia = "agente_ia"
 
 
+class AgentActionStatus(str, Enum):
+    """Ciclo de vida de una acción del agente IA.
+
+    - executed: tool de lectura o no-confirmable, ejecutada al toque.
+    - pending: tool sensible que requiere confirmación humana — payload guardado, NO ejecutada.
+    - confirmed: confirmada por el humano y ejecutada con éxito.
+    - cancelled: el humano canceló antes de que se ejecutara.
+    """
+    executed = "executed"
+    pending = "pending"
+    confirmed = "confirmed"
+    cancelled = "cancelled"
+
+
 # Capa lúdica
 class FrenteEstado(str, Enum):
     pendiente = "pendiente"
@@ -631,4 +645,10 @@ class AgentAction(Base):
     ok = Column(Boolean, default=True)
     error = Column(Text)
     canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web)
+    # Sprint 2: confirmación humana para tools sensibles.
+    status = Column(SQLEnum(AgentActionStatus), default=AgentActionStatus.executed, nullable=False, index=True)
+    confirmed_by = Column(Integer, ForeignKey("users.id"))
+    confirmed_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    confirmer = relationship("User", foreign_keys=[confirmed_by])

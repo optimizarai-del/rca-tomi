@@ -494,6 +494,862 @@ def t_listar_usuarios(input: dict, user: models.User, db: Session) -> dict:
 
 
 # ════════════════════════════════════════════════════════════════════
+# TOOLS DE ESCRITURA (Sprint 2) — todas en REQUIRES_CONFIRMATION_TOOLS
+# ════════════════════════════════════════════════════════════════════
+
+def t_registrar_movimiento(input: dict, user: models.User, db: Session) -> dict:
+    """Registra un movimiento financiero (INGRESO o EGRESO) en una obra.
+
+    Validaciones espejo del router POST /api/movimientos:
+    - INGRESO requiere origen_ingreso, no debe tener categoria_egreso.
+    - EGRESO requiere categoria_egreso, no debe tener origen_ingreso.
+    - Cheques (CHEQUE_PROPIO/CHEQUE_TERCERO) requieren nro_cheque + fecha_vto_cheque.
+    - Obra TOTAL_BLANCO + INGRESO de cliente requiere comprobante.
+    """
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra' (id, código o parte del nombre)"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    tipo_str = input.get("tipo")
+    if tipo_str not in ("INGRESO", "EGRESO"):
+        return {"error": "tipo debe ser INGRESO o EGRESO"}
+    tipo = models.TipoMovimiento(tipo_str)
+
+    try:
+        monto = float(input.get("monto", 0))
+    except (TypeError, ValueError):
+        return {"error": "monto inválido (debe ser número)"}
+    if monto <= 0:
+        return {"error": "monto debe ser > 0"}
+
+    fecha_str = input.get("fecha")
+    if fecha_str:
+        try:
+            fecha = date.fromisoformat(fecha_str)
+        except ValueError:
+            return {"error": "fecha debe estar en formato YYYY-MM-DD"}
+    else:
+        fecha = date.today()
+
+    concepto = (input.get("concepto") or "").strip()
+    if not concepto:
+        return {"error": "Falta 'concepto'"}
+
+    medio_str = input.get("medio_pago")
+    try:
+        medio_pago = models.MedioPago(medio_str)
+    except (ValueError, TypeError):
+        return {"error": f"medio_pago inválido: {medio_str}. Valores: EFECTIVO, TRANSFERENCIA, CHEQUE_PROPIO, CHEQUE_TERCERO, DEPOSITO_BANCARIO"}
+
+    origen_ingreso = None
+    categoria_egreso = None
+    if tipo == models.TipoMovimiento.INGRESO:
+        origen_str = input.get("origen_ingreso")
+        if not origen_str:
+            return {"error": "Para INGRESO se requiere origen_ingreso (ANTICIPO_CLIENTE, CERTIFICADO_ETAPA, PAGO_FINAL, AJUSTE_CONTRATO, APORTE_SOCIO_RCA, DEVOLUCION_PROVEEDOR)"}
+        try:
+            origen_ingreso = models.OrigenIngreso(origen_str)
+        except ValueError:
+            return {"error": f"origen_ingreso inválido: {origen_str}"}
+        if input.get("categoria_egreso"):
+            return {"error": "categoria_egreso no aplica en INGRESO"}
+    else:
+        cat_str = input.get("categoria_egreso")
+        if not cat_str:
+            return {"error": "Para EGRESO se requiere categoria_egreso (MANO_DE_OBRA, MATERIALES, SUBCONTRATO, SERVICIO_EXTERNO, GASTO_DIRECTO_OBRA, HERRAMIENTA_EQUIPO, APORTE_PRESTAMO)"}
+        try:
+            categoria_egreso = models.CategoriaEgreso(cat_str)
+        except ValueError:
+            return {"error": f"categoria_egreso inválida: {cat_str}"}
+        if input.get("origen_ingreso"):
+            return {"error": "origen_ingreso no aplica en EGRESO"}
+
+    nro_cheque = input.get("nro_cheque")
+    banco = input.get("banco")
+    fecha_vto_cheque = None
+    if medio_pago in (models.MedioPago.CHEQUE_PROPIO, models.MedioPago.CHEQUE_TERCERO):
+        if not nro_cheque:
+            return {"error": "Cheque requiere nro_cheque"}
+        vto_str = input.get("fecha_vto_cheque")
+        if not vto_str:
+            return {"error": "Cheque requiere fecha_vto_cheque (YYYY-MM-DD)"}
+        try:
+            fecha_vto_cheque = date.fromisoformat(vto_str)
+        except ValueError:
+            return {"error": "fecha_vto_cheque debe estar en formato YYYY-MM-DD"}
+
+    comprobante_id = input.get("comprobante_id")
+    if (
+        obra.tipo_facturacion == models.TipoFacturacion.TOTAL_BLANCO
+        and tipo == models.TipoMovimiento.INGRESO
+        and origen_ingreso in (
+            models.OrigenIngreso.ANTICIPO_CLIENTE,
+            models.OrigenIngreso.CERTIFICADO_ETAPA,
+            models.OrigenIngreso.PAGO_FINAL,
+        )
+        and not comprobante_id
+    ):
+        return {"error": f"Obra '{obra.nombre}' es TOTAL_BLANCO: este ingreso requiere comprobante. Cargá la factura primero con cargar_comprobante."}
+
+    etapa_id = input.get("etapa_id")
+    if etapa_id:
+        etapa = db.query(models.EtapaObra).filter(
+            models.EtapaObra.id == etapa_id,
+            models.EtapaObra.obra_id == obra.id,
+        ).first()
+        if not etapa:
+            return {"error": f"Etapa {etapa_id} no existe en esta obra"}
+
+    mov = models.MovimientoObra(
+        obra_id=obra.id,
+        etapa_id=etapa_id,
+        fecha=fecha,
+        tipo=tipo,
+        origen_ingreso=origen_ingreso,
+        categoria_egreso=categoria_egreso,
+        concepto=concepto,
+        monto=monto,
+        medio_pago=medio_pago,
+        nro_cheque=nro_cheque,
+        banco=banco,
+        fecha_vto_cheque=fecha_vto_cheque,
+        comprobante_id=comprobante_id,
+        canal=models.CanalCarga.agente_ia,
+        cargado_por=user.id,
+    )
+    db.add(mov); db.commit(); db.refresh(mov)
+
+    saldo = _saldo_obra(db, obra.id)
+    return {
+        "ok": True,
+        "movimiento_id": mov.id,
+        "obra": obra.nombre,
+        "tipo": tipo.value,
+        "monto": float(mov.monto),
+        "fecha": mov.fecha.isoformat(),
+        "concepto": mov.concepto,
+        "saldo_obra_actualizado": saldo["saldo"],
+    }
+
+
+def t_registrar_aporte_socio(input: dict, user: models.User, db: Session) -> dict:
+    """Registra un aporte de socio en una obra. R2: dispara INGRESO espejo automático.
+
+    Espejo de POST /api/aportes — crea AporteSocio y MovimientoObra en la misma transacción.
+    """
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra'"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    socio_id = input.get("socio_id")
+    if not socio_id:
+        return {"error": "Falta 'socio_id' (id del usuario que actúa como socio)"}
+    socio = db.query(models.User).filter(models.User.id == socio_id).first()
+    if not socio:
+        return {"error": f"Socio (user id {socio_id}) no encontrado"}
+
+    try:
+        monto = float(input.get("monto", 0))
+    except (TypeError, ValueError):
+        return {"error": "monto inválido"}
+    if monto <= 0:
+        return {"error": "monto debe ser > 0"}
+
+    motivo = (input.get("motivo") or "").strip()
+    if not motivo:
+        return {"error": "Falta 'motivo' (texto explicativo del aporte)"}
+
+    fecha_str = input.get("fecha_aporte")
+    if fecha_str:
+        try:
+            fecha_aporte = date.fromisoformat(fecha_str)
+        except ValueError:
+            return {"error": "fecha_aporte debe estar en formato YYYY-MM-DD"}
+    else:
+        fecha_aporte = date.today()
+
+    medio_str = input.get("medio_pago")
+    try:
+        medio_pago = models.MedioPago(medio_str)
+    except (ValueError, TypeError):
+        return {"error": f"medio_pago inválido: {medio_str}"}
+
+    etapa_reintegro_id = input.get("etapa_reintegro_id")
+    if etapa_reintegro_id:
+        e = db.query(models.EtapaObra).filter(
+            models.EtapaObra.id == etapa_reintegro_id,
+            models.EtapaObra.obra_id == obra.id,
+        ).first()
+        if not e:
+            return {"error": f"Etapa {etapa_reintegro_id} no existe en esta obra"}
+
+    aporte = models.AporteSocio(
+        obra_id=obra.id,
+        socio_id=socio.id,
+        etapa_reintegro_id=etapa_reintegro_id,
+        fecha_aporte=fecha_aporte,
+        monto=monto,
+        motivo=motivo,
+        medio_pago=medio_pago,
+        estado_devolucion=models.EstadoDevolucion.PENDIENTE,
+        monto_devuelto=0,
+    )
+    db.add(aporte); db.flush()
+
+    # R2: movimiento espejo INGRESO
+    mov = models.MovimientoObra(
+        obra_id=obra.id,
+        etapa_id=etapa_reintegro_id,
+        fecha=fecha_aporte,
+        tipo=models.TipoMovimiento.INGRESO,
+        origen_ingreso=models.OrigenIngreso.APORTE_SOCIO_RCA,
+        concepto=f"Aporte de socio: {motivo}",
+        monto=monto,
+        medio_pago=medio_pago,
+        aporte_socio_id=aporte.id,
+        estado=models.EstadoMovimiento.CONFIRMADO,
+        canal=models.CanalCarga.agente_ia,
+        cargado_por=user.id,
+    )
+    db.add(mov)
+    db.commit(); db.refresh(aporte)
+
+    saldo = _saldo_obra(db, obra.id)
+    return {
+        "ok": True,
+        "aporte_id": aporte.id,
+        "movimiento_espejo_id": mov.id,
+        "obra": obra.nombre,
+        "socio": f"{socio.name} {socio.last_name or ''}".strip(),
+        "monto": monto,
+        "saldo_obra_actualizado": saldo["saldo"],
+    }
+
+
+def t_enviar_whatsapp(input: dict, user: models.User, db: Session) -> dict:
+    """STUB de Sprint 4. No envía nada real todavía: registra el intent en el audit log
+    (vía AgentAction que ya persiste el orchestrator) y devuelve un mock.
+
+    Sprint 4 va a integrar Twilio o WhatsApp Cloud API. La firma de esta tool ya está
+    estable para que cuando llegue, solo cambie la implementación interna.
+    """
+    telefono = (input.get("telefono") or "").strip()
+    if not telefono:
+        return {"error": "Falta 'telefono' (formato +5491100000000)"}
+    mensaje = (input.get("mensaje") or "").strip()
+    if not mensaje:
+        return {"error": "Falta 'mensaje'"}
+    return {
+        "ok": True,
+        "stub": True,
+        "destinatario": telefono,
+        "mensaje_preview": mensaje[:200],
+        "obra_ref": input.get("obra_ref"),
+        "nota": "Sprint 4 va a integrar Twilio/WhatsApp Cloud API. Por ahora el envío queda registrado en agent_actions pero no se entrega.",
+    }
+
+
+def t_cargar_comprobante(input: dict, user: models.User, db: Session) -> dict:
+    """Crea un comprobante AFIP (FC_A/B/C, NC, ND, Recibo, Remito) ligado a una obra.
+    Validación: neto_gravado + neto_no_gravado + iva_21 + iva_105 = total (±0.05).
+    """
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra'"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    tipo_str = input.get("tipo_comprobante")
+    try:
+        tipo = models.TipoComprobante(tipo_str)
+    except (ValueError, TypeError):
+        return {"error": f"tipo_comprobante inválido: {tipo_str}. Valores: FC_A, FC_B, FC_C, NC_A, NC_B, ND_A, ND_B, RECIBO_X, REMITO"}
+
+    nro = (input.get("nro_comprobante") or "").strip()
+    if not nro:
+        return {"error": "Falta 'nro_comprobante' (formato 00001-00000001)"}
+
+    fecha_str = input.get("fecha_emision")
+    if not fecha_str:
+        return {"error": "Falta 'fecha_emision' (YYYY-MM-DD)"}
+    try:
+        fecha_emision = date.fromisoformat(fecha_str)
+    except ValueError:
+        return {"error": "fecha_emision debe estar en formato YYYY-MM-DD"}
+
+    cuit_emisor = input.get("cuit_emisor")
+    cuit_receptor = input.get("cuit_receptor")
+    if not cuit_emisor or not cuit_receptor:
+        return {"error": "Faltan 'cuit_emisor' y/o 'cuit_receptor'"}
+
+    try:
+        neto_gravado = float(input.get("neto_gravado", 0))
+        neto_no_gravado = float(input.get("neto_no_gravado", 0))
+        iva_21 = float(input.get("iva_21", 0))
+        iva_105 = float(input.get("iva_105", 0))
+        total = float(input.get("total", 0))
+    except (TypeError, ValueError):
+        return {"error": "Montos deben ser números"}
+
+    suma = neto_gravado + neto_no_gravado + iva_21 + iva_105
+    if abs(suma - total) > 0.05:
+        return {"error": f"Total ({total:.2f}) no coincide con neto+IVA ({suma:.2f})"}
+
+    if "es_venta" not in input:
+        return {"error": "Falta 'es_venta' (true=emitido, false=recibido)"}
+
+    cae = input.get("cae")
+    cae_vto_str = input.get("cae_vencimiento")
+    cae_vto = None
+    if cae_vto_str:
+        try:
+            cae_vto = date.fromisoformat(cae_vto_str)
+        except ValueError:
+            return {"error": "cae_vencimiento debe estar en formato YYYY-MM-DD"}
+
+    estado_fiscal_str = input.get("estado_fiscal", "VALIDO")
+    try:
+        estado_fiscal = models.EstadoFiscal(estado_fiscal_str)
+    except (ValueError, TypeError):
+        return {"error": f"estado_fiscal inválido: {estado_fiscal_str}"}
+
+    c = models.Comprobante(
+        obra_id=obra.id,
+        tipo_comprobante=tipo,
+        punto_venta=input.get("punto_venta"),
+        nro_comprobante=nro,
+        fecha_emision=fecha_emision,
+        cuit_emisor=cuit_emisor,
+        cuit_receptor=cuit_receptor,
+        neto_gravado=neto_gravado,
+        neto_no_gravado=neto_no_gravado,
+        iva_21=iva_21,
+        iva_105=iva_105,
+        total=total,
+        cae=cae,
+        cae_vencimiento=cae_vto,
+        es_venta=bool(input.get("es_venta")),
+        estado_fiscal=estado_fiscal,
+        archivo_url=input.get("archivo_url"),
+        notas=input.get("notas"),
+    )
+    db.add(c); db.commit(); db.refresh(c)
+    return {
+        "ok": True,
+        "comprobante_id": c.id,
+        "obra": obra.nombre,
+        "tipo": c.tipo_comprobante.value,
+        "nro": c.nro_comprobante,
+        "total": float(c.total),
+        "es_venta": c.es_venta,
+    }
+
+
+def t_crear_cliente(input: dict, user: models.User, db: Session) -> dict:
+    """Crea un cliente nuevo."""
+    nombre = (input.get("nombre") or "").strip()
+    if not nombre:
+        return {"error": "Falta 'nombre'"}
+
+    cuit = input.get("cuit")
+    if cuit:
+        existente = db.query(models.Cliente).filter(models.Cliente.cuit == cuit).first()
+        if existente:
+            return {"error": f"Ya existe un cliente con CUIT {cuit}: {existente.nombre}"}
+
+    regimen_id = input.get("regimen_fiscal_id")
+    if regimen_id:
+        rf = db.query(models.RegimenFiscal).filter(models.RegimenFiscal.id == regimen_id).first()
+        if not rf:
+            return {"error": f"Régimen fiscal {regimen_id} no encontrado"}
+
+    c = models.Cliente(
+        nombre=nombre,
+        cuit=cuit,
+        razon_social=input.get("razon_social"),
+        direccion=input.get("direccion"),
+        email=input.get("email"),
+        telefono=input.get("telefono"),
+        tipo=input.get("tipo"),  # publico, privado_ri, privado_mt, particular
+        regimen_fiscal_id=regimen_id,
+        notas=input.get("notas"),
+        activo=True,
+    )
+    db.add(c); db.commit(); db.refresh(c)
+    return {
+        "ok": True,
+        "cliente_id": c.id,
+        "nombre": c.nombre,
+        "cuit": c.cuit,
+        "tipo": c.tipo,
+    }
+
+
+def t_crear_obra(input: dict, user: models.User, db: Session) -> dict:
+    """Crea una obra ligada a un cliente con su régimen fiscal."""
+    nombre = (input.get("nombre") or "").strip()
+    if not nombre:
+        return {"error": "Falta 'nombre'"}
+
+    codigo = (input.get("codigo") or "").strip().upper()
+    if not codigo:
+        return {"error": "Falta 'codigo' (ej: IDS, SP)"}
+
+    cliente_id = input.get("cliente_id")
+    if not cliente_id:
+        return {"error": "Falta 'cliente_id' (creá primero el cliente con crear_cliente)"}
+    cliente = db.query(models.Cliente).filter(models.Cliente.id == cliente_id).first()
+    if not cliente:
+        return {"error": f"Cliente {cliente_id} no encontrado"}
+
+    if db.query(models.Obra).filter(models.Obra.codigo == codigo).first():
+        return {"error": f"Ya existe una obra con código '{codigo}'"}
+
+    tipo_fact_str = input.get("tipo_facturacion", "SIN_DEFINIR")
+    try:
+        tipo_facturacion = models.TipoFacturacion(tipo_fact_str)
+    except (ValueError, TypeError):
+        return {"error": f"tipo_facturacion inválido: {tipo_fact_str}"}
+
+    regimen_id = input.get("regimen_fiscal_id") or cliente.regimen_fiscal_id
+
+    monto_contrato = input.get("monto_contrato")
+    if monto_contrato is not None:
+        try:
+            monto_contrato = float(monto_contrato)
+        except (TypeError, ValueError):
+            return {"error": "monto_contrato inválido"}
+
+    fecha_inicio = None
+    if (fi := input.get("fecha_inicio")):
+        try:
+            fecha_inicio = date.fromisoformat(fi)
+        except ValueError:
+            return {"error": "fecha_inicio debe estar en formato YYYY-MM-DD"}
+
+    fecha_fin = None
+    if (ff := input.get("fecha_fin_estimada")):
+        try:
+            fecha_fin = date.fromisoformat(ff)
+        except ValueError:
+            return {"error": "fecha_fin_estimada debe estar en formato YYYY-MM-DD"}
+
+    o = models.Obra(
+        codigo=codigo,
+        nombre=nombre,
+        cliente_id=cliente.id,
+        regimen_fiscal_id=regimen_id,
+        tipo_facturacion=tipo_facturacion,
+        direccion=input.get("direccion"),
+        ciudad=input.get("ciudad"),
+        descripcion=input.get("descripcion"),
+        monto_contrato=monto_contrato,
+        fecha_inicio=fecha_inicio,
+        fecha_fin_estimada=fecha_fin,
+        estado=models.ObraStatus.EN_CURSO,
+        icono=input.get("icono", "🏗️"),
+        color=input.get("color", "#1E2B5E"),
+        superficie_m2=input.get("superficie_m2", 0),
+        pisos=input.get("pisos", 1),
+    )
+    db.add(o); db.commit(); db.refresh(o)
+    return {
+        "ok": True,
+        "obra_id": o.id,
+        "codigo": o.codigo,
+        "nombre": o.nombre,
+        "cliente": cliente.nombre,
+        "tipo_facturacion": o.tipo_facturacion.value,
+        "monto_contrato": float(o.monto_contrato) if o.monto_contrato else None,
+    }
+
+
+def t_crear_orden(input: dict, user: models.User, db: Session) -> dict:
+    """Crea una orden de trabajo (quest operativa) en una obra."""
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra'"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    titulo = (input.get("titulo") or "").strip()
+    if not titulo:
+        return {"error": "Falta 'titulo'"}
+
+    frente_id = input.get("frente_id")
+    if frente_id:
+        f = db.query(models.Frente).filter(
+            models.Frente.id == frente_id, models.Frente.obra_id == obra.id,
+        ).first()
+        if not f:
+            return {"error": f"Frente {frente_id} no existe en esta obra"}
+
+    cuadrilla_id = input.get("cuadrilla_id")
+    if cuadrilla_id:
+        c = db.query(models.Cuadrilla).filter(models.Cuadrilla.id == cuadrilla_id).first()
+        if not c:
+            return {"error": f"Cuadrilla {cuadrilla_id} no encontrada"}
+
+    fecha_limite = None
+    if (fl := input.get("fecha_limite")):
+        try:
+            fecha_limite = date.fromisoformat(fl)
+        except ValueError:
+            return {"error": "fecha_limite debe estar en formato YYYY-MM-DD"}
+
+    try:
+        xp_reward = int(input.get("xp_reward", 10))
+    except (TypeError, ValueError):
+        return {"error": "xp_reward debe ser entero"}
+    if xp_reward < 0:
+        return {"error": "xp_reward no puede ser negativo"}
+
+    o = models.OrdenTrabajo(
+        obra_id=obra.id,
+        frente_id=frente_id,
+        cuadrilla_id=cuadrilla_id,
+        titulo=titulo,
+        descripcion=input.get("descripcion"),
+        prioridad=input.get("prioridad", "normal"),
+        status=models.TaskStatus.pendiente,
+        xp_reward=xp_reward,
+        fecha_limite=fecha_limite,
+        creada_por_id=user.id,
+        canal_creacion=models.CanalCarga.agente_ia,
+    )
+    db.add(o); db.commit(); db.refresh(o)
+    return {
+        "ok": True,
+        "orden_id": o.id,
+        "obra": obra.nombre,
+        "titulo": o.titulo,
+        "xp_reward": o.xp_reward,
+        "status": o.status.value,
+    }
+
+
+def t_cerrar_orden(input: dict, user: models.User, db: Session) -> dict:
+    """Cierra una orden de trabajo. Suma XP al usuario y a la cuadrilla asignada,
+    sube nivel de la cuadrilla si corresponde. Crea evento 'avance' en el feed.
+    """
+    orden_id = input.get("orden_id")
+    if not orden_id:
+        return {"error": "Falta 'orden_id'"}
+    o = db.query(models.OrdenTrabajo).filter(models.OrdenTrabajo.id == orden_id).first()
+    if not o:
+        return {"error": f"Orden {orden_id} no encontrada"}
+    if o.status == models.TaskStatus.completada:
+        return {"error": "La orden ya está completada"}
+
+    o.status = models.TaskStatus.completada
+    o.completada_at = datetime.utcnow()
+
+    # XP al usuario
+    user.xp = (user.xp or 0) + o.xp_reward
+    cuad_info = None
+    if o.cuadrilla_id:
+        cuad = db.query(models.Cuadrilla).filter(models.Cuadrilla.id == o.cuadrilla_id).first()
+        if cuad:
+            cuad.experiencia = (cuad.experiencia or 0) + o.xp_reward
+            cuad.nivel = max(1, 1 + cuad.experiencia // 100)
+            cuad_info = {"id": cuad.id, "xp_total": cuad.experiencia, "nivel": cuad.nivel}
+
+    # Evento de avance
+    ev = models.Evento(
+        obra_id=o.obra_id,
+        frente_id=o.frente_id,
+        tipo=models.EventoTipo.avance,
+        titulo=f"Orden completada: {o.titulo}",
+        descripcion=input.get("nota_cierre"),
+        canal=models.CanalCarga.agente_ia,
+        usuario_id=user.id,
+    )
+    db.add(ev); db.commit(); db.refresh(o)
+
+    return {
+        "ok": True,
+        "orden_id": o.id,
+        "status": o.status.value,
+        "xp_otorgado_user": o.xp_reward,
+        "user_xp_total": user.xp,
+        "cuadrilla": cuad_info,
+        "evento_id": ev.id,
+    }
+
+
+def t_reportar_evento(input: dict, user: models.User, db: Session) -> dict:
+    """Crea un evento en el feed de actividad de una obra (avance, incidente, foto, etc.)."""
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra'"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    titulo = (input.get("titulo") or "").strip()
+    if not titulo:
+        return {"error": "Falta 'titulo'"}
+
+    tipo_str = input.get("tipo", "otro")
+    try:
+        tipo = models.EventoTipo(tipo_str)
+    except (ValueError, TypeError):
+        return {"error": f"tipo de evento inválido: {tipo_str}"}
+
+    frente_id = input.get("frente_id")
+    if frente_id:
+        f = db.query(models.Frente).filter(
+            models.Frente.id == frente_id, models.Frente.obra_id == obra.id,
+        ).first()
+        if not f:
+            return {"error": f"Frente {frente_id} no existe en esta obra"}
+
+    es_critico = bool(input.get("es_critico", tipo == models.EventoTipo.incidente))
+
+    ev = models.Evento(
+        obra_id=obra.id,
+        frente_id=frente_id,
+        tipo=tipo,
+        titulo=titulo,
+        descripcion=input.get("descripcion"),
+        foto_url=input.get("foto_url"),
+        canal=models.CanalCarga.agente_ia,
+        usuario_id=user.id,
+        es_critico=es_critico,
+    )
+    db.add(ev); db.commit(); db.refresh(ev)
+    return {
+        "ok": True,
+        "evento_id": ev.id,
+        "obra": obra.nombre,
+        "tipo": ev.tipo.value,
+        "titulo": ev.titulo,
+        "es_critico": ev.es_critico,
+    }
+
+
+def t_crear_etapa(input: dict, user: models.User, db: Session) -> dict:
+    """Crea una etapa nueva en una obra (anticipo, etapa N, final)."""
+    obra_ref = input.get("obra")
+    if not obra_ref:
+        return {"error": "Falta 'obra'"}
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"error": f"Obra '{obra_ref}' no encontrada"}
+
+    nombre = (input.get("nombre") or "").strip()
+    if not nombre:
+        return {"error": "Falta 'nombre' (ej: 'Etapa 2 - Terminaciones')"}
+
+    nro_etapa = input.get("nro_etapa")
+    if nro_etapa is None:
+        return {"error": "Falta 'nro_etapa' (0=anticipo, 1=etapa1, 2=etapa2, ...)"}
+    try:
+        nro_etapa = int(nro_etapa)
+    except (TypeError, ValueError):
+        return {"error": "nro_etapa debe ser entero"}
+
+    # Verificar duplicado
+    existente = db.query(models.EtapaObra).filter(
+        models.EtapaObra.obra_id == obra.id,
+        models.EtapaObra.nro_etapa == nro_etapa,
+    ).first()
+    if existente:
+        return {"error": f"La obra ya tiene una etapa con nro_etapa={nro_etapa}: '{existente.nombre}'"}
+
+    monto_contractual = input.get("monto_contractual")
+    if monto_contractual is not None:
+        try:
+            monto_contractual = float(monto_contractual)
+        except (TypeError, ValueError):
+            return {"error": "monto_contractual inválido"}
+        if monto_contractual < 0:
+            return {"error": "monto_contractual no puede ser negativo"}
+
+    porcentaje = input.get("porcentaje_avance")
+    if porcentaje is not None:
+        try:
+            porcentaje = float(porcentaje)
+        except (TypeError, ValueError):
+            return {"error": "porcentaje_avance inválido"}
+
+    fecha_str = input.get("fecha_estimada")
+    fecha_estimada = None
+    if fecha_str:
+        try:
+            fecha_estimada = date.fromisoformat(fecha_str)
+        except ValueError:
+            return {"error": "fecha_estimada debe estar en formato YYYY-MM-DD"}
+
+    estado_str = input.get("estado", "PENDIENTE")
+    try:
+        estado = models.EtapaEstado(estado_str)
+    except (ValueError, TypeError):
+        return {"error": f"estado inválido: {estado_str}"}
+
+    e = models.EtapaObra(
+        obra_id=obra.id,
+        nombre=nombre,
+        nro_etapa=nro_etapa,
+        monto_contractual=monto_contractual,
+        porcentaje_avance=porcentaje,
+        estado=estado,
+        fecha_estimada=fecha_estimada,
+        notas=input.get("notas"),
+    )
+    db.add(e); db.commit(); db.refresh(e)
+    return {
+        "ok": True,
+        "etapa_id": e.id,
+        "obra": obra.nombre,
+        "nombre": e.nombre,
+        "nro_etapa": e.nro_etapa,
+        "estado": e.estado.value,
+        "monto_contractual": float(e.monto_contractual) if e.monto_contractual else None,
+    }
+
+
+def t_cambiar_estado_etapa(input: dict, user: models.User, db: Session) -> dict:
+    """Cambia el estado de una etapa. R5: si pasa a COBRADA con aportes pendientes,
+    crea automáticamente una nota importante para alertar al admin.
+    """
+    etapa_id = input.get("etapa_id")
+    if not etapa_id:
+        return {"error": "Falta 'etapa_id'"}
+    e = db.query(models.EtapaObra).filter(models.EtapaObra.id == etapa_id).first()
+    if not e:
+        return {"error": f"Etapa {etapa_id} no encontrada"}
+
+    estado_str = input.get("nuevo_estado")
+    if not estado_str:
+        return {"error": "Falta 'nuevo_estado' (PENDIENTE, EN_EJECUCION, EJECUTADA, FACTURADA, COBRADA)"}
+    try:
+        nuevo = models.EtapaEstado(estado_str)
+    except (ValueError, TypeError):
+        return {"error": f"estado inválido: {estado_str}"}
+
+    estado_anterior = e.estado
+    e.estado = nuevo
+
+    # Fecha de cobro real si pasa a COBRADA
+    if nuevo == models.EtapaEstado.COBRADA and not e.fecha_cobro_real:
+        fecha_str = input.get("fecha_cobro_real")
+        if fecha_str:
+            try:
+                e.fecha_cobro_real = date.fromisoformat(fecha_str)
+            except ValueError:
+                return {"error": "fecha_cobro_real debe estar en formato YYYY-MM-DD"}
+        else:
+            e.fecha_cobro_real = date.today()
+
+    nota_creada = None
+    if nuevo == models.EtapaEstado.COBRADA:
+        pendientes = db.query(models.AporteSocio).filter(
+            models.AporteSocio.etapa_reintegro_id == etapa_id,
+            models.AporteSocio.estado_devolucion != models.EstadoDevolucion.DEVUELTO_TOTAL,
+        ).count()
+        if pendientes > 0:
+            n = models.NotaObra(
+                obra_id=e.obra_id,
+                texto=f"⚠️ Etapa '{e.nombre}' marcada COBRADA con {pendientes} aporte(s) de socio pendiente(s) de devolución. (R5 cascada — registrado por agente IA)",
+                importante=True,
+                autor_id=user.id,
+            )
+            db.add(n); db.flush()
+            nota_creada = n.id
+
+    db.commit(); db.refresh(e)
+    return {
+        "ok": True,
+        "etapa_id": e.id,
+        "estado_anterior": estado_anterior.value,
+        "estado_nuevo": e.estado.value,
+        "fecha_cobro_real": e.fecha_cobro_real.isoformat() if e.fecha_cobro_real else None,
+        "nota_r5_creada": nota_creada,
+    }
+
+
+def t_registrar_devolucion_aporte(input: dict, user: models.User, db: Session) -> dict:
+    """Registra una devolución (parcial o total) de un aporte de socio. Crea EGRESO espejo."""
+    aporte_id = input.get("aporte_id")
+    if not aporte_id:
+        return {"error": "Falta 'aporte_id'"}
+    aporte = db.query(models.AporteSocio).filter(models.AporteSocio.id == aporte_id).first()
+    if not aporte:
+        return {"error": f"Aporte {aporte_id} no encontrado"}
+    if aporte.estado_devolucion == models.EstadoDevolucion.DEVUELTO_TOTAL:
+        return {"error": "El aporte ya está totalmente devuelto"}
+
+    try:
+        monto = float(input.get("monto", 0))
+    except (TypeError, ValueError):
+        return {"error": "monto inválido"}
+    if monto <= 0:
+        return {"error": "monto debe ser > 0"}
+
+    pendiente = float(aporte.monto) - float(aporte.monto_devuelto)
+    if monto > pendiente + 0.01:
+        return {"error": f"Monto excede el pendiente ({pendiente:.2f})"}
+
+    fecha_str = input.get("fecha")
+    if fecha_str:
+        try:
+            fecha = date.fromisoformat(fecha_str)
+        except ValueError:
+            return {"error": "fecha debe estar en formato YYYY-MM-DD"}
+    else:
+        fecha = date.today()
+
+    medio_str = input.get("medio_pago")
+    try:
+        medio_pago = models.MedioPago(medio_str)
+    except (ValueError, TypeError):
+        return {"error": f"medio_pago inválido: {medio_str}"}
+
+    notas = input.get("notas") or aporte.motivo
+
+    aporte.monto_devuelto = float(aporte.monto_devuelto) + monto
+    aporte.fecha_devolucion = fecha
+    if abs(float(aporte.monto_devuelto) - float(aporte.monto)) < 0.01:
+        aporte.estado_devolucion = models.EstadoDevolucion.DEVUELTO_TOTAL
+    else:
+        aporte.estado_devolucion = models.EstadoDevolucion.DEVUELTO_PARCIAL
+
+    mov = models.MovimientoObra(
+        obra_id=aporte.obra_id,
+        fecha=fecha,
+        tipo=models.TipoMovimiento.EGRESO,
+        categoria_egreso=models.CategoriaEgreso.APORTE_PRESTAMO,
+        concepto=f"Devolución aporte socio (id {aporte.id}): {notas}",
+        monto=monto,
+        medio_pago=medio_pago,
+        aporte_socio_id=aporte.id,
+        estado=models.EstadoMovimiento.CONFIRMADO,
+        canal=models.CanalCarga.agente_ia,
+        cargado_por=user.id,
+    )
+    db.add(mov)
+    db.commit(); db.refresh(aporte)
+
+    return {
+        "ok": True,
+        "aporte_id": aporte.id,
+        "estado_devolucion": aporte.estado_devolucion.value,
+        "monto_devuelto_total": float(aporte.monto_devuelto),
+        "pendiente_restante": float(aporte.monto) - float(aporte.monto_devuelto),
+        "movimiento_egreso_id": mov.id,
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
 # SCHEMA PARA ANTHROPIC
 # ════════════════════════════════════════════════════════════════════
 
@@ -641,6 +1497,321 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
             "properties": {"rol": {"type": "string"}},
         },
     },
+    # ─── ESCRITURA (Sprint 2) — todas requieren confirmación humana ───
+    {
+        "name": "registrar_aporte_socio",
+        "description": (
+            "Registra un aporte de socio en una obra (préstamo interno con obligación de devolución). "
+            "REQUIERE CONFIRMACIÓN HUMANA. R2: dispara automáticamente un movimiento INGRESO espejo "
+            "con origen APORTE_SOCIO_RCA."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string", "description": "id, código o parte del nombre"},
+                "socio_id": {"type": "integer", "description": "id del usuario que actúa como socio"},
+                "monto": {"type": "number", "description": "siempre positivo"},
+                "motivo": {"type": "string", "description": "explicación corta del aporte"},
+                "fecha_aporte": {"type": "string", "description": "YYYY-MM-DD, default hoy"},
+                "medio_pago": {
+                    "type": "string",
+                    "enum": ["EFECTIVO", "TRANSFERENCIA", "CHEQUE_PROPIO", "CHEQUE_TERCERO", "DEPOSITO_BANCARIO"],
+                },
+                "etapa_reintegro_id": {"type": "integer", "description": "etapa en la que se prevé devolver"},
+            },
+            "required": ["obra", "socio_id", "monto", "motivo", "medio_pago"],
+        },
+    },
+    {
+        "name": "enviar_whatsapp",
+        "description": (
+            "STUB de Sprint 4. Registra la intención de enviar un WhatsApp pero NO lo entrega aún. "
+            "REQUIERE CONFIRMACIÓN. Cuando se integre Twilio/WhatsApp Cloud API, esta misma firma "
+            "va a enviar el mensaje real."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "telefono": {"type": "string", "description": "formato +5491100000000"},
+                "mensaje": {"type": "string"},
+                "obra_ref": {"type": "string", "description": "obra que da contexto al mensaje (opcional)"},
+            },
+            "required": ["telefono", "mensaje"],
+        },
+    },
+    {
+        "name": "cargar_comprobante",
+        "description": (
+            "Carga un comprobante AFIP (FC_A/B/C, NC, ND, Recibo X, Remito) ligado a una obra. "
+            "REQUIERE CONFIRMACIÓN. Validación: neto_gravado + neto_no_gravado + iva_21 + iva_105 = total."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "tipo_comprobante": {
+                    "type": "string",
+                    "enum": ["FC_A", "FC_B", "FC_C", "NC_A", "NC_B", "ND_A", "ND_B", "RECIBO_X", "REMITO"],
+                },
+                "punto_venta": {"type": "integer"},
+                "nro_comprobante": {"type": "string", "description": "ej '00001-00012345'"},
+                "fecha_emision": {"type": "string", "description": "YYYY-MM-DD"},
+                "cuit_emisor": {"type": "string"},
+                "cuit_receptor": {"type": "string"},
+                "neto_gravado": {"type": "number"},
+                "neto_no_gravado": {"type": "number"},
+                "iva_21": {"type": "number"},
+                "iva_105": {"type": "number"},
+                "total": {"type": "number"},
+                "cae": {"type": "string"},
+                "cae_vencimiento": {"type": "string", "description": "YYYY-MM-DD"},
+                "es_venta": {"type": "boolean", "description": "true=emitido, false=recibido"},
+                "estado_fiscal": {
+                    "type": "string",
+                    "enum": ["VALIDO", "SIN_CAE", "VENCIDO", "ANULADO"],
+                },
+                "archivo_url": {"type": "string"},
+                "notas": {"type": "string"},
+            },
+            "required": ["obra", "tipo_comprobante", "nro_comprobante", "fecha_emision",
+                         "cuit_emisor", "cuit_receptor", "total", "es_venta"],
+        },
+    },
+    {
+        "name": "crear_cliente",
+        "description": (
+            "Crea un cliente nuevo. REQUIERE CONFIRMACIÓN. "
+            "Tipo: publico, privado_ri, privado_mt o particular. CUIT debe ser único si se provee."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "nombre": {"type": "string"},
+                "cuit": {"type": "string"},
+                "razon_social": {"type": "string"},
+                "direccion": {"type": "string"},
+                "email": {"type": "string"},
+                "telefono": {"type": "string"},
+                "tipo": {"type": "string", "enum": ["publico", "privado_ri", "privado_mt", "particular"]},
+                "regimen_fiscal_id": {"type": "integer"},
+                "notas": {"type": "string"},
+            },
+            "required": ["nombre"],
+        },
+    },
+    {
+        "name": "crear_obra",
+        "description": (
+            "Crea una obra nueva ligada a un cliente. REQUIERE CONFIRMACIÓN. "
+            "Si no se especifica regimen_fiscal_id, hereda el del cliente. Código debe ser único."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "codigo": {"type": "string", "description": "ej IDS, SP, CASA-01"},
+                "nombre": {"type": "string"},
+                "cliente_id": {"type": "integer", "description": "id del cliente (creá primero con crear_cliente)"},
+                "regimen_fiscal_id": {"type": "integer", "description": "opcional, default toma el del cliente"},
+                "tipo_facturacion": {
+                    "type": "string",
+                    "enum": ["TOTAL_BLANCO", "TOTAL_NEGRO", "MIXTA", "SIN_DEFINIR"],
+                },
+                "direccion": {"type": "string"},
+                "ciudad": {"type": "string"},
+                "descripcion": {"type": "string"},
+                "monto_contrato": {"type": "number"},
+                "fecha_inicio": {"type": "string", "description": "YYYY-MM-DD"},
+                "fecha_fin_estimada": {"type": "string", "description": "YYYY-MM-DD"},
+                "icono": {"type": "string", "description": "emoji"},
+                "color": {"type": "string", "description": "hex color"},
+                "superficie_m2": {"type": "number"},
+                "pisos": {"type": "integer"},
+            },
+            "required": ["codigo", "nombre", "cliente_id"],
+        },
+    },
+    {
+        "name": "crear_orden",
+        "description": (
+            "Crea una orden de trabajo (quest operativa) en una obra. REQUIERE CONFIRMACIÓN. "
+            "Puede asignarse a un frente y a una cuadrilla. Otorga XP cuando se cierra."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "titulo": {"type": "string"},
+                "descripcion": {"type": "string"},
+                "frente_id": {"type": "integer"},
+                "cuadrilla_id": {"type": "integer"},
+                "prioridad": {"type": "string", "enum": ["baja", "normal", "alta", "critica"]},
+                "fecha_limite": {"type": "string", "description": "YYYY-MM-DD"},
+                "xp_reward": {"type": "integer", "description": "XP que da al cerrar, default 10"},
+            },
+            "required": ["obra", "titulo"],
+        },
+    },
+    {
+        "name": "cerrar_orden",
+        "description": (
+            "Marca una orden como completada. REQUIERE CONFIRMACIÓN. "
+            "Suma xp_reward al usuario y a la cuadrilla asignada (sube nivel cada 100 XP). "
+            "Crea evento 'avance' en el feed."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "orden_id": {"type": "integer"},
+                "nota_cierre": {"type": "string", "description": "comentario opcional para el evento"},
+            },
+            "required": ["orden_id"],
+        },
+    },
+    {
+        "name": "reportar_evento",
+        "description": (
+            "Crea un evento en el feed de actividad de una obra. REQUIERE CONFIRMACIÓN. "
+            "Tipo 'incidente' marca automáticamente es_critico=true."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "titulo": {"type": "string"},
+                "descripcion": {"type": "string"},
+                "tipo": {
+                    "type": "string",
+                    "enum": ["avance", "material_llegada", "incidente", "inspeccion", "foto", "hito", "otro"],
+                },
+                "frente_id": {"type": "integer"},
+                "foto_url": {"type": "string"},
+                "es_critico": {"type": "boolean"},
+            },
+            "required": ["obra", "titulo"],
+        },
+    },
+    {
+        "name": "crear_etapa",
+        "description": (
+            "Crea una etapa nueva en una obra (anticipo, etapa N, final) con monto contractual y "
+            "fecha estimada de cobro. REQUIERE CONFIRMACIÓN HUMANA. nro_etapa=0 para anticipo, "
+            "1+ para sucesivas. No permite duplicados."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "nombre": {"type": "string", "description": "ej: 'Etapa 2 - Terminaciones'"},
+                "nro_etapa": {"type": "integer", "description": "0=anticipo, 1=etapa1, 2=etapa2..."},
+                "monto_contractual": {"type": "number"},
+                "porcentaje_avance": {"type": "number", "description": "% sobre el total de la obra"},
+                "fecha_estimada": {"type": "string", "description": "YYYY-MM-DD, fecha estimada de cobro"},
+                "estado": {
+                    "type": "string",
+                    "enum": ["PENDIENTE", "EN_EJECUCION", "EJECUTADA", "FACTURADA", "COBRADA"],
+                    "description": "default PENDIENTE",
+                },
+                "notas": {"type": "string"},
+            },
+            "required": ["obra", "nombre", "nro_etapa"],
+        },
+    },
+    {
+        "name": "cambiar_estado_etapa",
+        "description": (
+            "Cambia el estado de una etapa siguiendo el ciclo "
+            "PENDIENTE → EN_EJECUCION → EJECUTADA → FACTURADA → COBRADA. REQUIERE CONFIRMACIÓN. "
+            "R5: al pasar a COBRADA, si hay aportes de socio pendientes vinculados a esta etapa, "
+            "se crea automáticamente una nota importante para alertar."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "etapa_id": {"type": "integer"},
+                "nuevo_estado": {
+                    "type": "string",
+                    "enum": ["PENDIENTE", "EN_EJECUCION", "EJECUTADA", "FACTURADA", "COBRADA"],
+                },
+                "fecha_cobro_real": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD, solo si nuevo_estado=COBRADA, default hoy",
+                },
+            },
+            "required": ["etapa_id", "nuevo_estado"],
+        },
+    },
+    {
+        "name": "registrar_devolucion_aporte",
+        "description": (
+            "Registra una devolución (parcial o total) de un aporte de socio. "
+            "REQUIERE CONFIRMACIÓN HUMANA. Crea un EGRESO espejo con categoría APORTE_PRESTAMO. "
+            "Si el monto devuelto iguala el aporte original, marca DEVUELTO_TOTAL."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "aporte_id": {"type": "integer"},
+                "monto": {"type": "number", "description": "monto a devolver, no puede exceder el pendiente"},
+                "fecha": {"type": "string", "description": "YYYY-MM-DD, default hoy"},
+                "medio_pago": {
+                    "type": "string",
+                    "enum": ["EFECTIVO", "TRANSFERENCIA", "CHEQUE_PROPIO", "CHEQUE_TERCERO", "DEPOSITO_BANCARIO"],
+                },
+                "notas": {"type": "string"},
+            },
+            "required": ["aporte_id", "monto", "medio_pago"],
+        },
+    },
+    {
+        "name": "registrar_movimiento",
+        "description": (
+            "Registra un movimiento financiero (INGRESO o EGRESO) en una obra. "
+            "REQUIERE CONFIRMACIÓN HUMANA antes de ejecutarse — el sistema mostrará "
+            "los datos al usuario y esperará que apriete Confirmar. "
+            "Si tipo=INGRESO usar origen_ingreso. Si tipo=EGRESO usar categoria_egreso. "
+            "Si medio_pago es CHEQUE_PROPIO o CHEQUE_TERCERO, también nro_cheque + fecha_vto_cheque. "
+            "Obras TOTAL_BLANCO exigen comprobante en ingresos de cliente."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string", "description": "id, código (IDS, SP) o parte del nombre"},
+                "tipo": {"type": "string", "enum": ["INGRESO", "EGRESO"]},
+                "monto": {"type": "number", "description": "siempre positivo, en pesos"},
+                "concepto": {"type": "string", "description": "descripción corta del movimiento"},
+                "fecha": {"type": "string", "description": "YYYY-MM-DD, default hoy"},
+                "medio_pago": {
+                    "type": "string",
+                    "enum": ["EFECTIVO", "TRANSFERENCIA", "CHEQUE_PROPIO", "CHEQUE_TERCERO", "DEPOSITO_BANCARIO"],
+                },
+                "origen_ingreso": {
+                    "type": "string",
+                    "enum": [
+                        "ANTICIPO_CLIENTE", "CERTIFICADO_ETAPA", "PAGO_FINAL",
+                        "AJUSTE_CONTRATO", "APORTE_SOCIO_RCA", "DEVOLUCION_PROVEEDOR",
+                    ],
+                    "description": "solo si tipo=INGRESO",
+                },
+                "categoria_egreso": {
+                    "type": "string",
+                    "enum": [
+                        "MANO_DE_OBRA", "MATERIALES", "SUBCONTRATO", "SERVICIO_EXTERNO",
+                        "GASTO_DIRECTO_OBRA", "HERRAMIENTA_EQUIPO", "APORTE_PRESTAMO",
+                    ],
+                    "description": "solo si tipo=EGRESO",
+                },
+                "nro_cheque": {"type": "string", "description": "requerido si medio_pago es cheque"},
+                "banco": {"type": "string"},
+                "fecha_vto_cheque": {
+                    "type": "string",
+                    "description": "YYYY-MM-DD, requerido si medio_pago es cheque",
+                },
+                "etapa_id": {"type": "integer", "description": "etapa de obra a la que se imputa"},
+                "comprobante_id": {"type": "integer", "description": "id de comprobante AFIP previamente cargado"},
+            },
+            "required": ["obra", "tipo", "monto", "concepto", "medio_pago"],
+        },
+    },
 ]
 
 
@@ -661,4 +1832,46 @@ TOOL_HANDLERS: dict[str, Callable[[dict, models.User, Session], dict]] = {
     "listar_cuadrillas": t_listar_cuadrillas,
     "eventos_recientes": t_eventos_recientes,
     "listar_usuarios": t_listar_usuarios,
+    # ─── escritura ───
+    "registrar_movimiento": t_registrar_movimiento,
+    "registrar_aporte_socio": t_registrar_aporte_socio,
+    "registrar_devolucion_aporte": t_registrar_devolucion_aporte,
+    "crear_etapa": t_crear_etapa,
+    "cambiar_estado_etapa": t_cambiar_estado_etapa,
+    "crear_orden": t_crear_orden,
+    "cerrar_orden": t_cerrar_orden,
+    "reportar_evento": t_reportar_evento,
+    "cargar_comprobante": t_cargar_comprobante,
+    "crear_cliente": t_crear_cliente,
+    "crear_obra": t_crear_obra,
+    "enviar_whatsapp": t_enviar_whatsapp,
+}
+
+
+# Tools sensibles que SIEMPRE requieren confirmación humana antes de ejecutar.
+# El orchestrator intercepta estas calls, persiste un AgentAction pendiente
+# y devuelve {requires_confirmation: true, action_id, preview} a Claude.
+# La ejecución real ocurre cuando el usuario clickea Confirmar en la UI
+# (POST /api/agent/confirm/{action_id}).
+#
+# Criterio (Sprint 2): TODAS las tools de escritura requieren confirmación.
+# Las tools de lectura (las 16 originales) nunca piden confirmación.
+# En Sprint 7 podríamos relajar para algunos casos según rol del usuario.
+REQUIRES_CONFIRMATION_TOOLS: set[str] = {
+    # Financiero (crítico)
+    "registrar_movimiento",
+    "registrar_aporte_socio",
+    "registrar_devolucion_aporte",
+    "cargar_comprobante",
+    # Estructura de obra
+    "crear_obra",
+    "crear_cliente",
+    "crear_etapa",
+    "cambiar_estado_etapa",
+    # Capa lúdica / operativa
+    "crear_orden",
+    "cerrar_orden",
+    "reportar_evento",
+    # Mensajería externa (visible a terceros)
+    "enviar_whatsapp",
 }
