@@ -118,6 +118,17 @@ agente, Vision IA para tickets/fotos, resumen semanal proactivo.
 
 **Endpoints:** `POST /api/agent/chat`, `POST /api/agent/reset`, `GET /api/agent/actions`.
 
+## 📚 Documentación
+
+Toda la documentación detallada vive en [docs/](docs/):
+
+- [docs/GUIA_PROYECTO.md](docs/GUIA_PROYECTO.md) — guía completa del proyecto (arquitectura, modelos, R1–R5)
+- [docs/PLAN_ACCION.md](docs/PLAN_ACCION.md) — plan detallado por sprint
+- [docs/ROADMAP.md](docs/ROADMAP.md) — qué está hecho y qué viene
+- [docs/QUICK_START.md](docs/QUICK_START.md) — comandos mínimos
+- [docs/GUIA_ONBOARDING.md](docs/GUIA_ONBOARDING.md) — tour de la UI
+- [docs/ESTRUCTURA_PLATAFORMA.md](docs/ESTRUCTURA_PLATAFORMA.md) — referencia técnica
+
 ## 🔮 Roadmap (siguientes features)
 
 - [ ] **Achievements/Logros** desbloqueables (primera obra completada, 1000 XP, etc.)
