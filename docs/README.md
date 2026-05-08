@@ -25,6 +25,10 @@
 | [ROADMAP.md](ROADMAP.md) | **Plan vivo**. Sprints cerrados + pendientes. Fuente de verdad |
 | [PLAN_ACCION.md](PLAN_ACCION.md) | Plan detallado por sprint con tareas concretas |
 
+## Sprints
+
+- **[sprints/](sprints/)** — un .md por sprint con qué requería, cómo se hizo, cómo se usa y qué tests se corrieron. Ideal para alguien que llega nuevo al proyecto.
+
 ## Recursos
 
 - **[screenshots/](screenshots/)** — capturas de tests visuales y evidencia de QA.
