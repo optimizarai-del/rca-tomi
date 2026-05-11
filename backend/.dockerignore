@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.coverage
+*.db
+*.sqlite
+*.sqlite3
+fielddata.db
+.env
+.env.local
+node_modules/
+.git/
+.github/

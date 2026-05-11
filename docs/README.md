@@ -29,6 +29,10 @@
 
 - **[sprints/](sprints/)** — un .md por sprint con qué requería, cómo se hizo, cómo se usa y qué tests se corrieron. Ideal para alguien que llega nuevo al proyecto.
 
+## Producción
+
+- **[DEPLOY.md](DEPLOY.md)** — guía paso a paso para deployar el proyecto a producción (Supabase + Railway + Vercel + Sentry + backups + WhatsApp real).
+
 ## Recursos
 
 - **[screenshots/](screenshots/)** — capturas de tests visuales y evidencia de QA.

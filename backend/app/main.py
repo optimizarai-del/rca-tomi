@@ -3,6 +3,24 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
+
+load_dotenv(override=True)
+
+# ─── Sentry (opcional) ───
+# Si SENTRY_DSN está seteado en .env, captura excepciones automáticamente.
+# Si no, no se inicializa (no rompe nada).
+_sentry_dsn = os.getenv("SENTRY_DSN")
+if _sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    sentry_sdk.init(
+        dsn=_sentry_dsn,
+        environment=os.getenv("SENTRY_ENV", "production"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0.1")),
+        integrations=[FastApiIntegration()],
+        send_default_pii=False,
+    )
+
 from app.routers import (
     auth, users, obras, cuadrillas, materiales, proveedores,
     ordenes, eventos, dashboard, whatsapp, agent,
@@ -10,7 +28,6 @@ from app.routers import (
     notifications, approval,
 )
 
-load_dotenv(override=True)
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="RCA. — Sistema de Gestión de Obras", version="0.4.0")
