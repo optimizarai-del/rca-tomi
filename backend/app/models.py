@@ -395,12 +395,39 @@ def _set_bancarizado(mapper, connection, target):
 # APORTES DE SOCIOS
 # ════════════════════════════════════════════════════════════════════
 
+class Socio(Base):
+    """Socio de RCA. Persona o entidad con participación en la empresa.
+
+    Sprint 7 — antes se usaba `User` con rol admin_finanzas como proxy.
+    Ahora tiene tabla propia con datos fiscales y participación. Puede
+    opcionalmente vincularse a un `User` si el socio también tiene cuenta
+    en la plataforma.
+    """
+    __tablename__ = "socios"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String(150), nullable=False)
+    apellido = Column(String(150))
+    cuit = Column(String(13), index=True)
+    email = Column(String(200))
+    telefono = Column(String(50))
+    participacion_pct = Column(Numeric(5, 2))  # % de participación en la sociedad
+    activo = Column(Boolean, default=True, nullable=False)
+    notas = Column(Text)
+    # Vínculo opcional a User (si el socio tiene cuenta en la plataforma)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    aportes = relationship("AporteSocio", back_populates="socio", cascade="all, delete-orphan")
+
+
 class AporteSocio(Base):
     """Préstamo interno de un socio (o RCA) a una obra. Obliga a reintegro."""
     __tablename__ = "aportes_socios"
     id = Column(Integer, primary_key=True)
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
-    socio_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # User actúa como socio mientras no haya tabla socios
+    socio_id = Column(Integer, ForeignKey("socios.id"), nullable=False)  # Sprint 7: FK a Socio propio
     etapa_reintegro_id = Column(Integer, ForeignKey("etapas_obra.id"))  # cuándo se prevé devolver
 
     fecha_aporte = Column(Date, nullable=False)
@@ -415,7 +442,7 @@ class AporteSocio(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     obra = relationship("Obra", back_populates="aportes")
-    socio = relationship("User", foreign_keys=[socio_id])
+    socio = relationship("Socio", back_populates="aportes")
     movimientos_generados = relationship(
         "MovimientoObra", foreign_keys="[MovimientoObra.aporte_socio_id]", back_populates="aporte",
     )

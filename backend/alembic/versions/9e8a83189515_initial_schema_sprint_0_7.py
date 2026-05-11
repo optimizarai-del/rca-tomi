@@ -1,8 +1,8 @@
-"""initial schema (sprint 0..4)
+"""initial schema (sprint 0..7)
 
-Revision ID: c8a557fd04fc
+Revision ID: 9e8a83189515
 Revises: 
-Create Date: 2026-05-11 16:40:40.608880
+Create Date: 2026-05-11 17:42:52.188035
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'c8a557fd04fc'
+revision: str = '9e8a83189515'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -131,6 +131,25 @@ def upgrade() -> None:
     )
     with op.batch_alter_table('materiales', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_materiales_categoria'), ['categoria'], unique=False)
+
+    op.create_table('socios',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('nombre', sa.String(length=150), nullable=False),
+    sa.Column('apellido', sa.String(length=150), nullable=True),
+    sa.Column('cuit', sa.String(length=13), nullable=True),
+    sa.Column('email', sa.String(length=200), nullable=True),
+    sa.Column('telefono', sa.String(length=50), nullable=True),
+    sa.Column('participacion_pct', sa.Numeric(precision=5, scale=2), nullable=True),
+    sa.Column('activo', sa.Boolean(), nullable=False),
+    sa.Column('notas', sa.Text(), nullable=True),
+    sa.Column('user_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('updated_at', sa.DateTime(), nullable=True),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    with op.batch_alter_table('socios', schema=None) as batch_op:
+        batch_op.create_index(batch_op.f('ix_socios_cuit'), ['cuit'], unique=False)
 
     op.create_table('agent_actions',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -298,7 +317,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['etapa_reintegro_id'], ['etapas_obra.id'], ),
     sa.ForeignKeyConstraint(['obra_id'], ['obras.id'], ondelete='CASCADE'),
-    sa.ForeignKeyConstraint(['socio_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['socio_id'], ['socios.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_table('eventos',
@@ -451,6 +470,10 @@ def downgrade() -> None:
         batch_op.drop_index(batch_op.f('ix_agent_actions_created_at'))
 
     op.drop_table('agent_actions')
+    with op.batch_alter_table('socios', schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f('ix_socios_cuit'))
+
+    op.drop_table('socios')
     with op.batch_alter_table('materiales', schema=None) as batch_op:
         batch_op.drop_index(batch_op.f('ix_materiales_categoria'))
 

@@ -7,15 +7,18 @@ import './index.css'
 
 // ─── Sentry (opcional) ───
 // Si VITE_SENTRY_DSN está seteado en build time, captura errores JS automáticamente.
-// Si no, no se inicializa.
+// Si no, NO se importa @sentry/react — Vite no puede resolver imports dinámicos con
+// variable, así que el módulo no se trata de cargar en dev cuando la lib no está.
 if (import.meta.env.VITE_SENTRY_DSN) {
-  // Lazy import: el bundle solo incluye @sentry/react si está activado
-  import('@sentry/react').then((Sentry) => {
+  const sentryPkg = '@sentry/' + 'react'  // string concat para que vite no analice estático
+  import(sentryPkg).then((Sentry) => {
     Sentry.init({
       dsn: import.meta.env.VITE_SENTRY_DSN,
       environment: import.meta.env.VITE_SENTRY_ENV || 'production',
       tracesSampleRate: Number(import.meta.env.VITE_SENTRY_TRACES_RATE || '0.1'),
     })
+  }).catch(() => {
+    console.warn('Sentry DSN seteado pero @sentry/react no instalado. Run `npm install @sentry/react`.')
   })
 }
 

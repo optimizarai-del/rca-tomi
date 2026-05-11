@@ -35,9 +35,11 @@ def create_aporte(
     obra = db.query(models.Obra).filter(models.Obra.id == data.obra_id).first()
     if not obra:
         raise HTTPException(404, "Obra no encontrada")
-    socio = db.query(models.User).filter(models.User.id == data.socio_id).first()
+    socio = db.query(models.Socio).filter(models.Socio.id == data.socio_id).first()
     if not socio:
-        raise HTTPException(404, "Socio (usuario) no encontrado")
+        raise HTTPException(404, "Socio no encontrado")
+    if not socio.activo:
+        raise HTTPException(400, f"El socio '{socio.nombre}' está inactivo")
 
     aporte = models.AporteSocio(**data.model_dump())
     db.add(aporte); db.flush()  # obtener id antes del movimiento espejo

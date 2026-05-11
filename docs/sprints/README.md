@@ -11,6 +11,7 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 2 | Agente IA con escritura + confirmación humana | ✅ (T6/T13 bloqueados sin saldo Anthropic) | [SPRINT_2_agente_escritura.md](SPRINT_2_agente_escritura.md) |
 | 3 | UI completa de gestión financiera | ✅ | [SPRINT_3_ui_finanzas.md](SPRINT_3_ui_finanzas.md) |
 | 4 | WhatsApp bidireccional + magic links | ✅ | [SPRINT_4_whatsapp.md](SPRINT_4_whatsapp.md) |
+| 7 | Roles y permisos + tabla Socio propia | ✅ (suite 49/49) | [SPRINT_7_roles.md](SPRINT_7_roles.md) |
 | 8 | Producción: Alembic + pytest + CI + Docker + Sentry + backups | ✅ (deploy real requiere acciones del usuario) | [SPRINT_8_produccion.md](SPRINT_8_produccion.md) |
 
 ## Cómo seguir leyendo

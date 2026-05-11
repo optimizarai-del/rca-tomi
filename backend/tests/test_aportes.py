@@ -11,8 +11,8 @@ def _post_aporte(client, auth_headers, obra_id, socio_id, monto=100000):
     })
 
 
-def test_R2_crear_aporte_genera_movimiento_espejo(db, client, auth_headers, obra, admin_user):
-    r = _post_aporte(client, auth_headers, obra.id, admin_user.id, monto=500000)
+def test_R2_crear_aporte_genera_movimiento_espejo(db, client, auth_headers, obra, socio):
+    r = _post_aporte(client, auth_headers, obra.id, socio.id, monto=500000)
     assert r.status_code == 201
     aporte_id = r.json()["id"]
 
@@ -24,8 +24,8 @@ def test_R2_crear_aporte_genera_movimiento_espejo(db, client, auth_headers, obra
     assert float(m.monto) == 500000
 
 
-def test_devolucion_parcial_marca_estado_y_crea_egreso_espejo(db, client, auth_headers, obra, admin_user):
-    r = _post_aporte(client, auth_headers, obra.id, admin_user.id, monto=200000)
+def test_devolucion_parcial_marca_estado_y_crea_egreso_espejo(db, client, auth_headers, obra, socio):
+    r = _post_aporte(client, auth_headers, obra.id, socio.id, monto=200000)
     aporte_id = r.json()["id"]
 
     r2 = client.post(f"/api/aportes/{aporte_id}/devolucion", headers=auth_headers, json={
@@ -44,8 +44,8 @@ def test_devolucion_parcial_marca_estado_y_crea_egreso_espejo(db, client, auth_h
     assert egresos[0].categoria_egreso == models.CategoriaEgreso.APORTE_PRESTAMO
 
 
-def test_devolucion_total_marca_estado_total(db, client, auth_headers, obra, admin_user):
-    r = _post_aporte(client, auth_headers, obra.id, admin_user.id, monto=100000)
+def test_devolucion_total_marca_estado_total(db, client, auth_headers, obra, socio):
+    r = _post_aporte(client, auth_headers, obra.id, socio.id, monto=100000)
     aporte_id = r.json()["id"]
 
     r2 = client.post(f"/api/aportes/{aporte_id}/devolucion", headers=auth_headers, json={
@@ -57,11 +57,19 @@ def test_devolucion_total_marca_estado_total(db, client, auth_headers, obra, adm
     assert ap.estado_devolucion == models.EstadoDevolucion.DEVUELTO_TOTAL
 
 
-def test_devolucion_excede_pendiente_rechaza(client, auth_headers, obra, admin_user):
-    r = _post_aporte(client, auth_headers, obra.id, admin_user.id, monto=50000)
+def test_devolucion_excede_pendiente_rechaza(client, auth_headers, obra, socio):
+    r = _post_aporte(client, auth_headers, obra.id, socio.id, monto=50000)
     aporte_id = r.json()["id"]
     r2 = client.post(f"/api/aportes/{aporte_id}/devolucion", headers=auth_headers, json={
         "monto": 999999, "fecha": date.today().isoformat(), "medio_pago": "EFECTIVO",
     })
     assert r2.status_code == 400
     assert "excede" in r2.json()["detail"].lower()
+
+
+def test_aporte_con_socio_inactivo_rechaza(client, auth_headers, obra, db, admin_user):
+    s = models.Socio(nombre="Inactivo", activo=False, user_id=admin_user.id)
+    db.add(s); db.commit(); db.refresh(s)
+    r = _post_aporte(client, auth_headers, obra.id, s.id, monto=10000)
+    assert r.status_code == 400
+    assert "inactivo" in r.json()["detail"].lower()

@@ -64,6 +64,39 @@ def admin_user(db):
     return u
 
 
+def _make_user(db, role, email_prefix):
+    u = models.User(
+        name=email_prefix.title(), email=f"{email_prefix}@test.com",
+        password_hash=hash_password("test1234"),
+        role=role, status=models.UserStatus.active,
+    )
+    db.add(u); db.commit(); db.refresh(u)
+    return u
+
+
+@pytest.fixture()
+def user_admin(db): return _make_user(db, models.UserRole.admin, "adminpm")
+
+@pytest.fixture()
+def user_admin_finanzas(db): return _make_user(db, models.UserRole.admin_finanzas, "finanzas")
+
+@pytest.fixture()
+def user_supervisor(db): return _make_user(db, models.UserRole.supervisor, "supervisor")
+
+@pytest.fixture()
+def user_bot(db): return _make_user(db, models.UserRole.usuario_bot, "bot")
+
+
+def _headers_for(user):
+    token = create_access_token({"sub": str(user.id), "role": user.role.value})
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def headers_for():
+    return _headers_for
+
+
 @pytest.fixture()
 def regimen_ri(db):
     r = models.RegimenFiscal(codigo="RI", nombre="Responsable Inscripto", iva_default=0.21)
@@ -76,6 +109,16 @@ def cliente(db, regimen_ri):
     c = models.Cliente(nombre="Cliente Test", cuit="30-12345678-9", tipo="privado_ri", regimen_fiscal_id=regimen_ri.id)
     db.add(c); db.commit(); db.refresh(c)
     return c
+
+
+@pytest.fixture()
+def socio(db, admin_user):
+    s = models.Socio(
+        nombre="Test", apellido="Socio", cuit="20-99999999-9",
+        email="socio@test.com", participacion_pct=100, activo=True, user_id=admin_user.id,
+    )
+    db.add(s); db.commit(); db.refresh(s)
+    return s
 
 
 @pytest.fixture()

@@ -102,6 +102,30 @@ class ClienteOut(ClienteIn):
 
 
 # ════════════════════════════════════════════════════════════════════
+# SOCIO (Sprint 7)
+# ════════════════════════════════════════════════════════════════════
+
+class SocioIn(BaseModel):
+    nombre: str
+    apellido: Optional[str] = None
+    cuit: Optional[str] = None
+    email: Optional[str] = None
+    telefono: Optional[str] = None
+    participacion_pct: Optional[float] = None
+    activo: bool = True
+    notas: Optional[str] = None
+    user_id: Optional[int] = None  # vínculo opcional a un User
+
+
+class SocioOut(SocioIn):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# ════════════════════════════════════════════════════════════════════
 # OBRA
 # ════════════════════════════════════════════════════════════════════
 

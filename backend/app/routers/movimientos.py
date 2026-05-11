@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin
+from app.security import get_current_user, require_admin, require_finanzas
 
 router = APIRouter(prefix="/api/movimientos", tags=["movimientos"])
 
@@ -225,9 +225,12 @@ def cheques_a_vencer(
 def descalce_fiscal(
     obra_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    _: models.User = Depends(require_finanzas),
 ):
-    """R4: detecta obras donde egresos con comprobante > ingresos con comprobante."""
+    """R4: detecta obras donde egresos con comprobante > ingresos con comprobante.
+
+    Solo super_admin + admin_finanzas — datos fiscales sensibles.
+    """
     obras = db.query(models.Obra).all() if not obra_id else [
         db.query(models.Obra).filter(models.Obra.id == obra_id).first()
     ]
