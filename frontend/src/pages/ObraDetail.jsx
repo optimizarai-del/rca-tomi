@@ -61,6 +61,9 @@ export default function ObraDetail() {
   if (!data) return <div className="px-8 py-12 text-muted">Cargando...</div>
   const { obra } = data
   const health = HEALTH_LABEL[obra.salud]
+  const presupuesto_pct = Number(data.monto_contrato) > 0
+    ? (Number(data.total_egresos) / Number(data.monto_contrato)) * 100
+    : 0
 
   return (
     <div className="animate-fade-in">
@@ -116,7 +119,7 @@ export default function ObraDetail() {
 
           {/* Stats grid Apple-style */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-x-8 gap-y-6 mt-12 pt-12 border-t border-border">
-            <BigStat label="Presupuesto" value={`${Math.round(data.presupuesto_pct)}%`} sub="consumido"/>
+            <BigStat label="Presupuesto" value={`${Math.round(presupuesto_pct)}%`} sub="consumido"/>
             <BigStat label="Equipo" value={data.obreros_total} sub={`${data.cuadrillas_activas} cuadrillas`}/>
             <BigStat label="Frentes" value={`${data.frentes_completados}/${data.frentes_total}`} sub="completados"/>
             <BigStat label="Días restantes" value={data.dias_restantes ?? '—'} sub="estimados"/>
