@@ -16,7 +16,16 @@ def list_materiales(db: Session = Depends(get_db), _: models.User = Depends(get_
 @router.post("/", response_model=schemas.MaterialOut, status_code=201)
 def create_material(data: schemas.MaterialIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     m = models.Material(**data.model_dump())
-    db.add(m); db.commit(); db.refresh(m)
+    db.add(m); db.flush()
+    # Sprint 9: si vino con stock inicial, lo asentamos en depósito propio
+    if (data.stock or 0) > 0:
+        db.add(models.StockMaterial(
+            material_id=m.id,
+            ubicacion_tipo=models.UbicacionStockTipo.deposito_propio,
+            ubicacion_ref=None,
+            cantidad=float(data.stock),
+        ))
+    db.commit(); db.refresh(m)
     return m
 
 
@@ -43,4 +52,6 @@ def registrar_movimiento(
 def delete_material(mid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     m = db.query(models.Material).filter(models.Material.id == mid).first()
     if not m: raise HTTPException(404, "Material no encontrado")
+    # Sprint 9: limpiar stock multi-ubicación asociado (no hay cascade)
+    db.query(models.StockMaterial).filter(models.StockMaterial.material_id == mid).delete()
     db.delete(m); db.commit()

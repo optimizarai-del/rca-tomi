@@ -35,6 +35,7 @@ export default function Sidebar() {
           <div className="section-label">Recursos</div>
           <NavLink to="/cuadrillas" className={link}><Users size={15} strokeWidth={1.8}/> Cuadrillas</NavLink>
           <NavLink to="/materiales" className={link}><Package size={15} strokeWidth={1.8}/> Materiales</NavLink>
+          <NavLink to="/presupuestos" className={link}><ClipboardList size={15} strokeWidth={1.8}/> Presupuestos</NavLink>
           <NavLink to="/proveedores" className={link}><Truck size={15} strokeWidth={1.8}/> Proveedores</NavLink>
         </>
       )}

@@ -27,6 +27,7 @@ HELP = (
     "/aportes                - aportes pendientes\n"
     "/avance <obra> <%>      - actualiza progreso\n"
     "/gasto <obra> <monto> <concepto>  - registra egreso\n"
+    "/stock [material]       - stock multi-ubicación (Sprint 9)\n"
     "/help                   - este menú"
 )
 
@@ -98,6 +99,8 @@ def handle_slash(text: str, user: models.User, db: Session) -> dict:
         return _cmd_avance(args, user, db)
     if cmd == "gasto":
         return _cmd_gasto(args, user, db)
+    if cmd == "stock":
+        return _cmd_stock(args, db)
 
     return {
         "ok": False,
@@ -281,3 +284,48 @@ def _cmd_gasto(args: list[str], user: models.User, db: Session) -> dict:
         "movimiento_id": mov.id,
         "saldo_obra": s["saldo"],
     }
+
+
+def _cmd_stock(args: list[str], db: Session) -> dict:
+    """Sprint 9 — /stock [material]
+
+    Sin args: top de los materiales con desglose.
+    Con material (id o nombre): desglose detallado de ese material.
+    """
+    from app.stock import breakdown_por_material
+
+    if args:
+        ref = " ".join(args).strip()
+        # buscar por id o nombre
+        material_id = int(ref) if ref.isdigit() else None
+        if material_id is None:
+            m = db.query(models.Material).filter(models.Material.nombre.ilike(f"%{ref}%")).first()
+            if not m:
+                return {"ok": False, "reply": f"❌ No encontré el material '{ref}'."}
+            material_id = m.id
+        items = breakdown_por_material(db, material_id=material_id)
+        if not items:
+            return {"ok": False, "reply": f"❌ Material id={material_id} no existe."}
+        it = items[0]
+        lines = [f"📦 *{it['nombre']}* ({it['unidad']})"]
+        lines.append(f"  Total disponible: {it['stock_total_disponible']:.0f} · pendiente retiro: {it['stock_pendiente_retiro']:.0f}")
+        if it["stock_minimo"] and it["stock_total_disponible"] < it["stock_minimo"]:
+            lines.append(f"  ⚠️ Bajo mínimo ({it['stock_minimo']:.0f})")
+        for u in it["ubicaciones"]:
+            if u["cantidad"] > 0:
+                lines.append(f"  • {u['ubicacion_nombre']}: {u['cantidad']:.0f}")
+        return {"ok": True, "reply": "\n".join(lines)}
+
+    items = breakdown_por_material(db)
+    if not items:
+        return {"ok": True, "reply": "📦 No hay materiales cargados."}
+    lines = [f"📦 Stock — {len(items)} materiales"]
+    for it in items[:15]:
+        flag = ""
+        if it["stock_minimo"] and it["stock_total_disponible"] < it["stock_minimo"]:
+            flag = " ⚠️"
+        pend_str = f" (+{it['stock_pendiente_retiro']:.0f} pendiente)" if it["stock_pendiente_retiro"] else ""
+        lines.append(f"  • {it['nombre']}: {it['stock_total_disponible']:.0f} {it['unidad']}{pend_str}{flag}")
+    if len(items) > 15:
+        lines.append(f"  ...y {len(items) - 15} más")
+    return {"ok": True, "reply": "\n".join(lines)}

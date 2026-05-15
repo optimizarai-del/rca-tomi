@@ -180,6 +180,20 @@ class TaskStatus(str, Enum):
     bloqueada = "bloqueada"
 
 
+class UbicacionStockTipo(str, Enum):
+    """Dónde está físicamente el material (Sprint 9)."""
+    deposito_propio = "deposito_propio"           # depósito de RCA, sin obra asignada
+    en_obra = "en_obra"                           # ya retirado y entregado a una obra
+    comprado_no_retirado = "comprado_no_retirado" # facturado/pagado pero sigue en el proveedor
+
+
+class EstadoPresupuesto(str, Enum):
+    """Sprint 10."""
+    borrador = "borrador"
+    aprobado = "aprobado"
+    cerrado = "cerrado"
+
+
 class EventoTipo(str, Enum):
     avance = "avance"
     material_llegada = "material_llegada"
@@ -598,6 +612,59 @@ class MovimientoMaterial(Base):
     usuario_id = Column(Integer, ForeignKey("users.id"))
 
     material = relationship("Material", back_populates="movimientos")
+
+
+class StockMaterial(Base):
+    """Stock por ubicación física (Sprint 9).
+
+    Una fila por combinación material + (tipo_ubicación, ref). Ejemplos:
+    - (material=cemento, tipo=deposito_propio, ref=null): 50 bolsas en depósito.
+    - (material=cemento, tipo=en_obra, ref=obra_id=3): 20 bolsas en obra IDS.
+    - (material=cemento, tipo=comprado_no_retirado, ref=proveedor_id=2): 100 pendientes de retiro en Holcim.
+
+    El campo Material.stock queda como cache del total (deposito + en_obra), sin contar
+    pendientes de retiro. Se recalcula vía evento.
+    """
+    __tablename__ = "stock_material"
+    id = Column(Integer, primary_key=True)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False, index=True)
+    ubicacion_tipo = Column(SQLEnum(UbicacionStockTipo), nullable=False, index=True)
+    ubicacion_ref = Column(Integer)  # obra_id | proveedor_id | null
+    cantidad = Column(Float, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    material = relationship("Material")
+
+
+class Presupuesto(Base):
+    """Sprint 10 — Presupuesto de materiales por obra."""
+    __tablename__ = "presupuestos"
+    id = Column(Integer, primary_key=True)
+    obra_id = Column(Integer, ForeignKey("obras.id"), nullable=False, index=True)
+    nombre = Column(String, nullable=False)
+    estado = Column(SQLEnum(EstadoPresupuesto), default=EstadoPresupuesto.borrador, nullable=False)
+    total_estimado = Column(Float, default=0)
+    notas = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    aprobado_at = Column(DateTime)
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+
+    obra = relationship("Obra")
+    items = relationship("PresupuestoItem", back_populates="presupuesto", cascade="all, delete-orphan")
+    created_by = relationship("User")
+
+
+class PresupuestoItem(Base):
+    __tablename__ = "presupuesto_items"
+    id = Column(Integer, primary_key=True)
+    presupuesto_id = Column(Integer, ForeignKey("presupuestos.id", ondelete="CASCADE"), nullable=False)
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False)
+    cantidad = Column(Float, nullable=False, default=0)
+    precio_unitario_estimado = Column(Float, nullable=False, default=0)
+    subtotal = Column(Float, nullable=False, default=0)
+
+    presupuesto = relationship("Presupuesto", back_populates="items")
+    material = relationship("Material")
 
 
 class Proveedor(Base):
