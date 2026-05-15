@@ -54,3 +54,9 @@ pip-log.txt
 .nuxt/
 .turbo/
 coverage/
+
+# ─── Playwright MCP ephemeral artifacts ───
+.playwright-mcp/
+
+# ─── DB backups (Sprint 8 T7) ───
+backups/

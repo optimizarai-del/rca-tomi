@@ -69,6 +69,20 @@ def run():
         )
         db.add_all([admin, socio_a, socio_b, capataz]); db.flush()
 
+        # ─── SOCIOS (Sprint 7: tabla propia, antes era User con rol admin_finanzas) ───
+        socio_entity_a = models.Socio(
+            nombre="Tomás", apellido="Martínez",
+            cuit="20-30000001-5", email="tomas@rca.com", telefono="+5491100000002",
+            participacion_pct=50, user_id=socio_a.id, activo=True,
+            notas="Socio fundador.",
+        )
+        socio_entity_b = models.Socio(
+            nombre="Lucía", apellido="Fernández",
+            cuit="27-30000002-3", email="lucia@rca.com", telefono="+5491100000003",
+            participacion_pct=50, user_id=socio_b.id, activo=True,
+        )
+        db.add_all([socio_entity_a, socio_entity_b]); db.flush()
+
         # ─── CLIENTES ───
         cli_publico = models.Cliente(
             nombre="Colegio Domingo Savio", tipo="publico",
@@ -219,7 +233,7 @@ def run():
 
         # ─── APORTE EN SP + INGRESO ESPEJO ───
         aporte = models.AporteSocio(
-            obra_id=sp_obra.id, socio_id=socio_a.id,
+            obra_id=sp_obra.id, socio_id=socio_entity_a.id,
             etapa_reintegro_id=sp_etapas[1].id,
             fecha_aporte=today - timedelta(days=10),
             monto=600_000,

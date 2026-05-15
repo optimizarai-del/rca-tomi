@@ -25,6 +25,7 @@ export default function Finanzas() {
   const [movs, setMovs] = useState([])
   const [hud, setHud] = useState(null)
   const [cheques, setCheques] = useState([])
+  const [descalce, setDescalce] = useState([])
 
   useEffect(() => {
     Promise.all([
@@ -32,8 +33,10 @@ export default function Finanzas() {
       api.get('/api/movimientos?limit=100'),
       api.get('/api/dashboard/hud'),
       api.get('/api/movimientos/cheques-a-vencer?dias=60').catch(() => ({ data: [] })),
-    ]).then(([o, m, h, c]) => {
+      api.get('/api/movimientos/descalce-fiscal').catch(() => ({ data: [] })),
+    ]).then(([o, m, h, c, d]) => {
       setObras(o.data); setMovs(m.data); setHud(h.data); setCheques(c.data || [])
+      setDescalce(Array.isArray(d.data) ? d.data : [])
     })
   }, [])
 
@@ -97,6 +100,42 @@ export default function Finanzas() {
             </ul>
           )}
         </div>
+      </section>
+
+      {/* Descalce fiscal global */}
+      <section className="card p-6 mb-10">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="hero-title text-xl">Descalce fiscal</h2>
+            <p className="text-xs text-muted mt-0.5">Obras donde egresos con factura superan ingresos con factura (R4 — crédito fiscal IVA pendiente).</p>
+          </div>
+          <span className={`text-2xl font-bold tracking-tight ${descalce.filter(d => d.tiene_descalce).length > 0 ? 'text-leather' : 'text-olive-700'}`}>
+            {fmtMoney(descalce.filter(d => d.tiene_descalce).reduce((s, d) => s + d.descalce, 0))}
+          </span>
+        </div>
+        {descalce.length === 0 ? (
+          <p className="text-sm text-muted">Sin obras para analizar.</p>
+        ) : descalce.filter(d => d.tiene_descalce).length === 0 ? (
+          <p className="text-sm text-olive-700">✓ Ninguna obra presenta descalce fiscal en este momento.</p>
+        ) : (
+          <ul className="space-y-3">
+            {descalce.filter(d => d.tiene_descalce).map((d, i) => (
+              <li key={i} className="border-t border-border/50 pt-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="font-medium text-sm">
+                    {d.obra}
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-muted">{d.tipo_facturacion}</span>
+                  </span>
+                  <span className="font-bold text-leather text-sm">{fmtMoney(d.descalce)}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-[11px] text-muted">
+                  <span>Ingresos c/FC: <span className="text-navy font-medium">{fmtMoney(d.ingresos_con_comprobante)}</span></span>
+                  <span>Egresos c/FC: <span className="text-navy font-medium">{fmtMoney(d.egresos_con_comprobante)}</span></span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <div className="grid lg:grid-cols-2 gap-5 mb-6">

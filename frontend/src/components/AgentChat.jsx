@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Send, X, RefreshCw, Sparkles, Loader2 } from 'lucide-react'
+import { Bot, Send, X, RefreshCw, Sparkles, Loader2, Check, XCircle, ShieldAlert } from 'lucide-react'
 import api from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 
@@ -10,6 +10,23 @@ const SUGERENCIAS = [
   'Mostrame las órdenes pendientes',
   'Ranking de cuadrillas por XP',
 ]
+
+// Cuántas tools sensibles existen y qué nombre amigable mostrar.
+// Si el backend agrega tools nuevas, el preview JSON sigue funcionando como fallback.
+const TOOL_LABELS = {
+  registrar_movimiento: 'Registrar movimiento financiero',
+  registrar_aporte_socio: 'Registrar aporte de socio',
+  registrar_devolucion_aporte: 'Registrar devolución de aporte',
+  cargar_comprobante: 'Cargar comprobante AFIP',
+  crear_obra: 'Crear obra',
+  crear_cliente: 'Crear cliente',
+  crear_etapa: 'Crear etapa',
+  cambiar_estado_etapa: 'Cambiar estado de etapa',
+  crear_orden: 'Crear orden de trabajo',
+  cerrar_orden: 'Cerrar orden',
+  reportar_evento: 'Reportar evento',
+  enviar_whatsapp: 'Enviar mensaje WhatsApp',
+}
 
 export default function AgentChat() {
   const { user } = useAuth()
@@ -37,7 +54,12 @@ export default function AgentChat() {
       const { data } = await api.post('/api/agent/chat', { message })
       setMsgs((m) => [
         ...m,
-        { role: 'assistant', text: data.reply, tools: data.tools_used || [] },
+        {
+          role: 'assistant',
+          text: data.reply,
+          tools: data.tools_used || [],
+          pending: data.pending_actions || [],
+        },
       ])
     } catch (e) {
       setMsgs((m) => [
@@ -52,6 +74,70 @@ export default function AgentChat() {
       ])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleConfirm = async (actionId, confirm) => {
+    // Marcar la action como "resolviendo" para deshabilitar los botones
+    setMsgs((m) =>
+      m.map((msg) => ({
+        ...msg,
+        pending: (msg.pending || []).map((p) =>
+          p.action_id === actionId ? { ...p, resolving: true } : p,
+        ),
+      })),
+    )
+    try {
+      const { data } = await api.post(`/api/agent/confirm/${actionId}`, { confirm })
+      // Quitar la action confirmada/cancelada de pending (ya no muestra los botones)
+      setMsgs((m) =>
+        m.map((msg) => ({
+          ...msg,
+          pending: (msg.pending || []).filter((p) => p.action_id !== actionId),
+        })),
+      )
+      // Agregar un mensaje de resultado del agente
+      let resultText
+      if (data.cancelled) {
+        resultText = `❌ Acción cancelada (${TOOL_LABELS[data.tool_name] || data.tool_name}).`
+      } else if (data.ok) {
+        resultText = `✅ Acción confirmada y ejecutada.`
+        if (data.result?.movimiento_id) {
+          resultText += ` Movimiento #${data.result.movimiento_id} creado.`
+        }
+        if (data.result?.saldo_obra_actualizado != null) {
+          const saldo = data.result.saldo_obra_actualizado
+          const fmt = Math.abs(saldo) >= 1e6
+            ? `$${(saldo / 1e6).toFixed(2)}M`
+            : Math.abs(saldo) >= 1e3
+            ? `$${(saldo / 1e3).toFixed(0)}k`
+            : `$${saldo.toFixed(0)}`
+          resultText += ` Nuevo saldo de la obra: ${fmt}.`
+        }
+      } else {
+        resultText = `⚠️ La acción se intentó pero falló: ${data.result?.error || 'error desconocido'}`
+      }
+      setMsgs((m) => [...m, { role: 'assistant', text: resultText, system: true }])
+    } catch (e) {
+      // Restaurar el botón al estado normal si falló la llamada
+      setMsgs((m) =>
+        m.map((msg) => ({
+          ...msg,
+          pending: (msg.pending || []).map((p) =>
+            p.action_id === actionId ? { ...p, resolving: false } : p,
+          ),
+        })),
+      )
+      setMsgs((m) => [
+        ...m,
+        {
+          role: 'assistant',
+          text:
+            e.response?.data?.detail ||
+            'Error confirmando la acción. Probá de nuevo.',
+          error: true,
+        },
+      ])
     }
   }
 
@@ -145,7 +231,7 @@ export default function AgentChat() {
             )}
 
             {msgs.map((m, i) => (
-              <Message key={i} m={m} />
+              <Message key={i} m={m} onConfirm={handleConfirm} />
             ))}
 
             {loading && (
@@ -190,7 +276,7 @@ export default function AgentChat() {
   )
 }
 
-function Message({ m }) {
+function Message({ m, onConfirm }) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end">
@@ -201,10 +287,10 @@ function Message({ m }) {
     )
   }
   return (
-    <div className="flex flex-col items-start gap-1 max-w-[90%]">
+    <div className="flex flex-col items-start gap-2 max-w-[95%] w-full">
       <div
-        className={`rounded-2xl rounded-bl-md px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
-          m.error ? 'bg-danger/10 text-danger' : 'bg-bone-100 text-navy'
+        className={`rounded-2xl rounded-bl-md px-4 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap max-w-[90%] ${
+          m.error ? 'bg-danger/10 text-danger' : m.system ? 'bg-olive/10 text-navy' : 'bg-bone-100 text-navy'
         }`}
       >
         {m.text}
@@ -221,6 +307,76 @@ function Message({ m }) {
           ))}
         </div>
       )}
+      {m.pending?.length > 0 &&
+        m.pending.map((p) => (
+          <ConfirmableAction
+            key={p.action_id}
+            pending={p}
+            onConfirm={onConfirm}
+          />
+        ))}
+    </div>
+  )
+}
+
+function ConfirmableAction({ pending, onConfirm }) {
+  const label = TOOL_LABELS[pending.tool_name] || pending.tool_name
+  const previewLines = Object.entries(pending.preview || {})
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
+
+  return (
+    <div className="w-full bg-leather/5 border border-leather/30 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <ShieldAlert size={14} className="text-leather shrink-0" />
+        <div className="text-[12px] font-semibold tracking-tight text-navy">
+          Confirmación requerida
+        </div>
+      </div>
+      <div className="text-[12px] text-navy/80">
+        <span className="font-medium">{label}</span>
+        <span className="text-muted ml-1 font-mono text-[11px]">#{pending.action_id}</span>
+      </div>
+      {previewLines.length > 0 && (
+        <div className="bg-white rounded-xl border border-border/60 px-3 py-2 space-y-0.5">
+          {previewLines.map(([k, v]) => (
+            <div key={k} className="flex items-baseline gap-2 text-[11px]">
+              <span className="text-muted/80 uppercase tracking-wide font-medium min-w-[90px]">
+                {k}
+              </span>
+              <span className="text-navy break-all">{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 pt-1">
+        <button
+          onClick={() => onConfirm(pending.action_id, true)}
+          disabled={pending.resolving}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full
+                     bg-navy text-bone text-[12px] font-medium tracking-tight
+                     hover:bg-navy-700 active:scale-[0.97]
+                     disabled:opacity-50 disabled:cursor-wait transition"
+        >
+          {pending.resolving ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Check size={12} />
+          )}
+          Confirmar
+        </button>
+        <button
+          onClick={() => onConfirm(pending.action_id, false)}
+          disabled={pending.resolving}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-full
+                     bg-bone-200/80 text-navy text-[12px] font-medium tracking-tight
+                     hover:bg-bone-200 active:scale-[0.97]
+                     disabled:opacity-50 disabled:cursor-wait transition"
+        >
+          <XCircle size={12} />
+          Cancelar
+        </button>
+      </div>
     </div>
   )
 }

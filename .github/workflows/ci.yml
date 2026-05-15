@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+jobs:
+  backend:
+    name: Backend (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Alembic — validar que las migraciones son aplicables
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./ci_test.db
+          SECRET_KEY: ci-test-secret
+        run: |
+          python -m alembic upgrade head
+          python -m alembic current
+
+      - name: Pytest
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///:memory:
+          SECRET_KEY: ci-test-secret
+          WHATSAPP_PROVIDER: log_only
+        run: pytest
+
+      - name: Validar que el seed corre OK
+        working-directory: backend
+        env:
+          DATABASE_URL: sqlite:///./seed_test.db
+          SECRET_KEY: ci-test-secret
+        run: |
+          python -m alembic upgrade head
+          python -m app.seed
+
+  frontend:
+    name: Frontend (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: ["20"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build (producción)
+        working-directory: frontend
+        env:
+          VITE_API_URL: https://api.example.com
+        run: npm run build
+
+      - name: Verificar lint si existe
+        working-directory: frontend
+        run: |
+          if [ -f "eslint.config.js" ] || grep -q '"lint"' package.json; then
+            npm run lint || echo "lint warnings (non-blocking)"
+          else
+            echo "no lint configurado"
+          fi

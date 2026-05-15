@@ -143,6 +143,28 @@ class CanalCarga(str, Enum):
     agente_ia = "agente_ia"
 
 
+class AgentActionStatus(str, Enum):
+    """Ciclo de vida de una acción del agente IA.
+
+    - executed: tool de lectura o no-confirmable, ejecutada al toque.
+    - pending: tool sensible que requiere confirmación humana — payload guardado, NO ejecutada.
+    - confirmed: confirmada por el humano y ejecutada con éxito.
+    - cancelled: el humano canceló antes de que se ejecutara.
+    """
+    executed = "executed"
+    pending = "pending"
+    confirmed = "confirmed"
+    cancelled = "cancelled"
+
+
+class OutboundMessageStatus(str, Enum):
+    """Estado de un mensaje saliente (WhatsApp / SMS / Email)."""
+    log_only = "log_only"  # provider en modo log_only — no se envió, queda registrado
+    pending = "pending"    # encolado pero aún no enviado
+    sent = "sent"          # confirmación del provider
+    failed = "failed"      # falló el envío
+
+
 # Capa lúdica
 class FrenteEstado(str, Enum):
     pendiente = "pendiente"
@@ -373,12 +395,39 @@ def _set_bancarizado(mapper, connection, target):
 # APORTES DE SOCIOS
 # ════════════════════════════════════════════════════════════════════
 
+class Socio(Base):
+    """Socio de RCA. Persona o entidad con participación en la empresa.
+
+    Sprint 7 — antes se usaba `User` con rol admin_finanzas como proxy.
+    Ahora tiene tabla propia con datos fiscales y participación. Puede
+    opcionalmente vincularse a un `User` si el socio también tiene cuenta
+    en la plataforma.
+    """
+    __tablename__ = "socios"
+    id = Column(Integer, primary_key=True)
+    nombre = Column(String(150), nullable=False)
+    apellido = Column(String(150))
+    cuit = Column(String(13), index=True)
+    email = Column(String(200))
+    telefono = Column(String(50))
+    participacion_pct = Column(Numeric(5, 2))  # % de participación en la sociedad
+    activo = Column(Boolean, default=True, nullable=False)
+    notas = Column(Text)
+    # Vínculo opcional a User (si el socio tiene cuenta en la plataforma)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    aportes = relationship("AporteSocio", back_populates="socio", cascade="all, delete-orphan")
+
+
 class AporteSocio(Base):
     """Préstamo interno de un socio (o RCA) a una obra. Obliga a reintegro."""
     __tablename__ = "aportes_socios"
     id = Column(Integer, primary_key=True)
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
-    socio_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # User actúa como socio mientras no haya tabla socios
+    socio_id = Column(Integer, ForeignKey("socios.id"), nullable=False)  # Sprint 7: FK a Socio propio
     etapa_reintegro_id = Column(Integer, ForeignKey("etapas_obra.id"))  # cuándo se prevé devolver
 
     fecha_aporte = Column(Date, nullable=False)
@@ -393,7 +442,7 @@ class AporteSocio(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     obra = relationship("Obra", back_populates="aportes")
-    socio = relationship("User", foreign_keys=[socio_id])
+    socio = relationship("Socio", back_populates="aportes")
     movimientos_generados = relationship(
         "MovimientoObra", foreign_keys="[MovimientoObra.aporte_socio_id]", back_populates="aporte",
     )
@@ -631,4 +680,44 @@ class AgentAction(Base):
     ok = Column(Boolean, default=True)
     error = Column(Text)
     canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web)
+    # Sprint 2: confirmación humana para tools sensibles.
+    status = Column(SQLEnum(AgentActionStatus), default=AgentActionStatus.executed, nullable=False, index=True)
+    confirmed_by = Column(Integer, ForeignKey("users.id"))
+    confirmed_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    confirmer = relationship("User", foreign_keys=[confirmed_by])
+
+
+# ════════════════════════════════════════════════════════════════════
+# WHATSAPP OUTBOUND (Sprint 4)
+# ════════════════════════════════════════════════════════════════════
+
+class OutboundMessage(Base):
+    """Registro de cada mensaje que sale de la plataforma (WhatsApp por ahora).
+
+    Soporta múltiples providers (log_only por defecto, twilio, cloud_api).
+    Si el provider es log_only, el mensaje se persiste con status=log_only y
+    NO se envía. Si es twilio/cloud_api, se hace la llamada y se actualiza el
+    status según el resultado.
+    """
+    __tablename__ = "outbound_messages"
+    id = Column(Integer, primary_key=True)
+    canal = Column(String, default="whatsapp", nullable=False)
+    destinatario = Column(String, nullable=False, index=True)  # +5491100000000
+    mensaje = Column(Text, nullable=False)
+    foto_url = Column(String)
+    provider = Column(String, nullable=False)  # log_only / twilio / cloud_api
+    status = Column(SQLEnum(OutboundMessageStatus), default=OutboundMessageStatus.pending, nullable=False, index=True)
+    provider_message_id = Column(String)  # SID de Twilio, ID de Cloud API, etc.
+    error = Column(Text)
+    # Contexto: por qué se envió esto
+    notification_type = Column(String, index=True)  # cheque_venciendo / evento_critico / semanal / asignacion / agente_ia / manual / approval / slash_response
+    # Idempotency key: opcional, sirve para dedupear notificaciones automáticas.
+    # Ej: cheque_venciendo:movimiento=42:vto=2026-05-23
+    context_key = Column(String, index=True)
+    obra_id = Column(Integer, ForeignKey("obras.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
+    related_action_id = Column(Integer, ForeignKey("agent_actions.id"))
+    sent_at = Column(DateTime)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

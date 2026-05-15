@@ -349,13 +349,13 @@ CanalCarga    = whatsapp | web | automatico
 
 ### Componentes globales
 
-#### `<Layout fullWidth?>` ([Layout.jsx](frontend/src/components/Layout/Layout.jsx))
+#### `<Layout fullWidth?>` ([Layout.jsx](../frontend/src/components/Layout/Layout.jsx))
 Wrapper estándar:
 - `<HUD />` arriba sticky
 - `<Sidebar />` izquierda 60w
 - `<main>` con padding `px-10 py-12` (o sin padding si fullWidth)
 
-#### `<HUD />` ([HUD.jsx](frontend/src/components/HUD.jsx))
+#### `<HUD />` ([HUD.jsx](../frontend/src/components/HUD.jsx))
 Top nav 48px con:
 - Logo clickeable → `/world`
 - Stats live: Disponible | Obras | Equipo | Productividad (auto-refresh 30s)
@@ -363,7 +363,7 @@ Top nav 48px con:
 - Search (placeholder), WhatsApp bot, Avatar+nombre, Logout
 - Glass effect: `bg-white/70 backdrop-blur-2xl saturate-150`
 
-#### `<Sidebar />` ([Sidebar.jsx](frontend/src/components/Layout/Sidebar.jsx))
+#### `<Sidebar />` ([Sidebar.jsx](../frontend/src/components/Layout/Sidebar.jsx))
 Nav lateral con secciones según rol:
 - **General:** Obras, Órdenes, Actividad
 - **Recursos** (admin): Cuadrillas, Materiales, Proveedores
@@ -372,7 +372,7 @@ Nav lateral con secciones según rol:
 
 Active state: pill navy + shadow-soft. Iconos `strokeWidth=1.8`.
 
-#### `<Logo size variant tagline color />` ([Logo.jsx](frontend/src/components/Logo.jsx))
+#### `<Logo size variant tagline color />` ([Logo.jsx](../frontend/src/components/Logo.jsx))
 Logo tipográfico "RCA." con punto bloque oliva.
 - Sizes: `xs | sm | md | lg | xl`
 - Colors: `navy | bone | white`
@@ -385,25 +385,25 @@ Guard que:
 
 ### Páginas (resumen visual)
 
-#### 🔐 Login ([Login.jsx](frontend/src/pages/Login.jsx))
+#### 🔐 Login ([Login.jsx](../frontend/src/pages/Login.jsx))
 - **Layout:** 2 columnas grid `[1.1fr_1fr]`
 - **Izq:** Hero navy con blobs ambient (olive/leather), título 6-7xl bicolor
 - **Der:** Form minimalista con campos rounded-2xl
 - **Eyebrow:** "Diseño · Construcción · Servicio" tracking-[0.22em]
 - **Demo box:** credenciales `admin@demo.com / demo1234`
 
-#### 📝 Register ([Register.jsx](frontend/src/pages/Register.jsx))
+#### 📝 Register ([Register.jsx](../frontend/src/pages/Register.jsx))
 - Card centrada `p-10` con shadow-card
 - Form 2 columnas (nombre/apellido) + email + WhatsApp + password
 - Auto-rol `admin_finanzas` para primer usuario
 
-#### 🌍 WorldMap ([WorldMap.jsx](frontend/src/pages/WorldMap.jsx))
+#### 🌍 WorldMap ([WorldMap.jsx](../frontend/src/pages/WorldMap.jsx))
 - **Hero:** "Tus obras / en un solo lugar." (6-7xl bicolor)
 - **Filtros pill:** Todas | En obra | Planificación | Finalizadas (con conteos)
 - **Grid de obras:** cards con código, nombre, ciudad, progress bar, salud-dot
 - **Empty state:** ícono grande + CTA crear primera obra
 
-#### 🏢 ObraDetail ([ObraDetail.jsx](frontend/src/pages/ObraDetail.jsx))
+#### 🏢 ObraDetail ([ObraDetail.jsx](../frontend/src/pages/ObraDetail.jsx))
 Página rica con secciones apilables:
 1. **Hero header:** código + estado + nombre 5-6xl + ubicación + cliente + descripción
 2. **Status pill** (verde/amarillo/rojo)
@@ -412,37 +412,37 @@ Página rica con secciones apilables:
 5. **Órdenes de trabajo** (lista + modal)
 6. **Actividad** (mini feed) + reportar evento
 
-#### 📋 Ordenes ([Ordenes.jsx](frontend/src/pages/Ordenes.jsx))
+#### 📋 Ordenes ([Ordenes.jsx](../frontend/src/pages/Ordenes.jsx))
 - Hero "Órdenes." + subtítulo
 - Filtro dropdown por obra
 - Card con resumen 3-buckets (pendientes / en_progreso / completadas)
 - Tabla detallada de órdenes
 
-#### 👷 Cuadrillas ([Cuadrillas.jsx](frontend/src/pages/Cuadrillas.jsx))
+#### 👷 Cuadrillas ([Cuadrillas.jsx](../frontend/src/pages/Cuadrillas.jsx))
 - Hero "Cuadrillas." + CTA "Nueva cuadrilla"
 - Grid 1/2/3 columnas responsive
 - Cada card: nombre, especialidad, miembros + stats RPG (nivel, eficiencia)
 
-#### 📦 Materiales ([Materiales.jsx](frontend/src/pages/Materiales.jsx))
+#### 📦 Materiales ([Materiales.jsx](../frontend/src/pages/Materiales.jsx))
 - Hero "Materiales." + CTA "Nuevo material"
 - Filtros pill por categoría
 - Grid agrupado por categoría
 - Alertas si stock < stock_minimo
 
-#### 🚚 Proveedores ([Proveedores.jsx](frontend/src/pages/Proveedores.jsx))
+#### 🚚 Proveedores ([Proveedores.jsx](../frontend/src/pages/Proveedores.jsx))
 - Hero "Proveedores." + CTA
 - Grid de cards con rating estrellas, plazo entrega, flag moroso
 
-#### 💰 Finanzas ([Finanzas.jsx](frontend/src/pages/Finanzas.jsx))
+#### 💰 Finanzas ([Finanzas.jsx](../frontend/src/pages/Finanzas.jsx))
 - Hero "Presupuestos."
 - **3 big numbers** estilo Apple: Total | Consumido | Disponible (`text-5xl`)
 - **2 breakdowns:** por categoría + por obra (bar charts)
 
-#### 👥 Equipo ([Equipo.jsx](frontend/src/pages/Equipo.jsx))
+#### 👥 Equipo ([Equipo.jsx](../frontend/src/pages/Equipo.jsx))
 - Hero "Usuarios." + CTA invitar
 - Tabla con avatar circular navy + datos + select de rol
 
-#### 📢 Feed ([Feed.jsx](frontend/src/pages/Feed.jsx))
+#### 📢 Feed ([Feed.jsx](../frontend/src/pages/Feed.jsx))
 - Hero "Actividad."
 - Timeline cronológica con icons:
   - ◆ avance · ◇ material · ! incidente · ◉ inspección · ◫ foto · ★ hito

@@ -22,7 +22,7 @@ Ambas operadas por un **Operario IA conversacional** (Claude Sonnet 4.5 con tool
 - Clone del repo, refactor de puertos (backend 8010, frontend 5175 por choque con OPTIMIZAR).
 - Scripts `setup.bat` / `setup.sh` para arrancar en otra PC en 1 comando.
 - `start-backend.bat` / `start-frontend.bat` validan venv/node_modules y crean `.env`.
-- Documentación: [SETUP.md](SETUP.md) con guía PC nueva + troubleshooting.
+- Documentación: [SETUP.md](../SETUP.md) con guía PC nueva + troubleshooting.
 
 ### Sprint 1 — Operario IA (cerrado)
 - Modelos `AgentSession` (historial por usuario) + `AgentAction` (audit log).
