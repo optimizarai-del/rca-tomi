@@ -13,6 +13,8 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 4 | WhatsApp bidireccional + magic links | ✅ | [SPRINT_4_whatsapp.md](SPRINT_4_whatsapp.md) |
 | 7 | Roles y permisos + tabla Socio propia | ✅ (suite 49/49) | [SPRINT_7_roles.md](SPRINT_7_roles.md) |
 | 8 | Producción: Alembic + pytest + CI + Docker + Sentry + backups | ✅ (deploy real requiere acciones del usuario) | [SPRINT_8_produccion.md](SPRINT_8_produccion.md) |
+| 9 | Stock multi-ubicación (depósito · en obras · pendiente retiro) | ✅ (suite 77/77) | [SPRINT_9_stock_multiubicacion.md](SPRINT_9_stock_multiubicacion.md) |
+| 10 | Presupuestos de materiales por obra | ✅ (suite 77/77) | [SPRINT_10_presupuestos_materiales.md](SPRINT_10_presupuestos_materiales.md) |
 
 ## Cómo seguir leyendo
 

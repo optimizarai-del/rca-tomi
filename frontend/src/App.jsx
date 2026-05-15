@@ -5,6 +5,7 @@ import WorldMap from './pages/WorldMap'
 import ObraDetail from './pages/ObraDetail'
 import Cuadrillas from './pages/Cuadrillas'
 import Materiales from './pages/Materiales'
+import Presupuestos from './pages/Presupuestos'
 import Proveedores from './pages/Proveedores'
 import Ordenes from './pages/Ordenes'
 import Feed from './pages/Feed'
@@ -32,6 +33,7 @@ export default function App() {
       <Route path="/obra/:id" element={<P fullWidth><ObraDetail /></P>} />
       <Route path="/cuadrillas" element={<P requireAdmin><Cuadrillas /></P>} />
       <Route path="/materiales" element={<P requireAdmin><Materiales /></P>} />
+      <Route path="/presupuestos" element={<P requireAdmin><Presupuestos /></P>} />
       <Route path="/proveedores" element={<P requireAdmin><Proveedores /></P>} />
       <Route path="/ordenes" element={<P><Ordenes /></P>} />
       <Route path="/feed" element={<P><Feed /></P>} />

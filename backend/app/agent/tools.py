@@ -1365,6 +1365,281 @@ def t_registrar_devolucion_aporte(input: dict, user: models.User, db: Session) -
 
 
 # ════════════════════════════════════════════════════════════════════
+# SPRINT 9 — STOCK MULTI-UBICACIÓN
+# ════════════════════════════════════════════════════════════════════
+
+def _material_by_ref(ref, db: Session) -> models.Material | None:
+    if ref is None:
+        return None
+    if isinstance(ref, int) or (isinstance(ref, str) and str(ref).isdigit()):
+        m = db.query(models.Material).filter(models.Material.id == int(ref)).first()
+        if m:
+            return m
+    if isinstance(ref, str):
+        return db.query(models.Material).filter(models.Material.nombre.ilike(f"%{ref.strip()}%")).first()
+    return None
+
+
+def _proveedor_by_ref(ref, db: Session) -> models.Proveedor | None:
+    if ref is None:
+        return None
+    if isinstance(ref, int) or (isinstance(ref, str) and str(ref).isdigit()):
+        p = db.query(models.Proveedor).filter(models.Proveedor.id == int(ref)).first()
+        if p:
+            return p
+    if isinstance(ref, str):
+        return db.query(models.Proveedor).filter(models.Proveedor.nombre.ilike(f"%{ref.strip()}%")).first()
+    return None
+
+
+def t_consultar_stock(input: dict, user: models.User, db: Session) -> dict:
+    """LECTURA — devuelve el desglose de stock por ubicación de uno o todos los materiales."""
+    from app.stock import breakdown_por_material
+    ref = input.get("material")
+    material_id = None
+    if ref is not None:
+        m = _material_by_ref(ref, db)
+        if not m:
+            return {"error": f"No encontré el material '{ref}'"}
+        material_id = m.id
+    items = breakdown_por_material(db, material_id=material_id)
+    # achatar para devolver al agente
+    return {
+        "total_materiales": len(items),
+        "materiales": [
+            {
+                "id": it["id"], "nombre": it["nombre"], "unidad": it["unidad"],
+                "stock_minimo": it["stock_minimo"],
+                "stock_total_disponible": it["stock_total_disponible"],
+                "stock_pendiente_retiro": it["stock_pendiente_retiro"],
+                "ubicaciones": it["ubicaciones"],
+            }
+            for it in items
+        ],
+    }
+
+
+def t_cargar_compra_pendiente_retiro(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — registra una compra cuya mercadería sigue en el proveedor."""
+    from app.stock import cargar_compra_pendiente, breakdown_por_material
+    mat = _material_by_ref(input.get("material"), db)
+    if not mat:
+        return {"error": f"No encontré el material '{input.get('material')}'"}
+    prov = _proveedor_by_ref(input.get("proveedor"), db)
+    if not prov:
+        return {"error": f"No encontré el proveedor '{input.get('proveedor')}'"}
+    try:
+        cant = float(input.get("cantidad", 0))
+    except (TypeError, ValueError):
+        return {"error": "cantidad inválida"}
+    try:
+        cargar_compra_pendiente(db, material_id=mat.id, proveedor_id=prov.id,
+                                cantidad=cant, nota=input.get("nota"), usuario_id=user.id)
+    except ValueError as e:
+        return {"error": str(e)}
+    detalle = breakdown_por_material(db, material_id=mat.id)[0]
+    return {
+        "ok": True, "material": mat.nombre, "proveedor": prov.nombre,
+        "cantidad_agregada": cant,
+        "pendiente_total_ahora": detalle["stock_pendiente_retiro"],
+    }
+
+
+def t_retirar_de_proveedor(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — marca materiales como retirados del proveedor → depósito propio o directo a obra."""
+    from app.stock import retirar_de_proveedor, breakdown_por_material
+    mat = _material_by_ref(input.get("material"), db)
+    if not mat:
+        return {"error": f"No encontré el material '{input.get('material')}'"}
+    prov = _proveedor_by_ref(input.get("proveedor"), db)
+    if not prov:
+        return {"error": f"No encontré el proveedor '{input.get('proveedor')}'"}
+    try:
+        cant = float(input.get("cantidad", 0))
+    except (TypeError, ValueError):
+        return {"error": "cantidad inválida"}
+
+    destino_tipo = input.get("destino_tipo")
+    destino_obra_id = None
+    if destino_tipo == "en_obra":
+        obra_ref = input.get("obra")
+        obra = _obra_by_ref(obra_ref, db) if obra_ref else None
+        if not obra:
+            return {"error": f"Necesito una obra de destino (no encontré '{obra_ref}')"}
+        destino_obra_id = obra.id
+    elif destino_tipo != "deposito_propio":
+        return {"error": "destino_tipo debe ser 'deposito_propio' o 'en_obra'"}
+
+    try:
+        retirar_de_proveedor(
+            db, material_id=mat.id, proveedor_id=prov.id, cantidad=cant,
+            destino_tipo=destino_tipo, destino_obra_id=destino_obra_id,
+            nota=input.get("nota"), usuario_id=user.id,
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+    detalle = breakdown_por_material(db, material_id=mat.id)[0]
+    return {
+        "ok": True, "material": mat.nombre, "proveedor": prov.nombre,
+        "cantidad_retirada": cant,
+        "destino": destino_tipo + (f" (obra id={destino_obra_id})" if destino_obra_id else ""),
+        "pendiente_restante": detalle["stock_pendiente_retiro"],
+        "stock_disponible_total": detalle["stock_total_disponible"],
+    }
+
+
+def t_consumir_en_obra(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — registra consumo de material en una obra (cuadrilla usó X cantidad)."""
+    from app.stock import consumir_en_obra, breakdown_por_material
+    mat = _material_by_ref(input.get("material"), db)
+    if not mat:
+        return {"error": f"No encontré el material '{input.get('material')}'"}
+    obra = _obra_by_ref(input.get("obra"), db)
+    if not obra:
+        return {"error": f"No encontré la obra '{input.get('obra')}'"}
+    try:
+        cant = float(input.get("cantidad", 0))
+    except (TypeError, ValueError):
+        return {"error": "cantidad inválida"}
+    try:
+        consumir_en_obra(db, material_id=mat.id, obra_id=obra.id, cantidad=cant,
+                         nota=input.get("nota"), usuario_id=user.id)
+    except ValueError as e:
+        return {"error": str(e)}
+    detalle = breakdown_por_material(db, material_id=mat.id)[0]
+    return {
+        "ok": True, "material": mat.nombre, "obra": obra.nombre,
+        "cantidad_consumida": cant,
+        "stock_total_disponible": detalle["stock_total_disponible"],
+    }
+
+
+def t_transferir_stock(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — mueve stock entre depósito propio y obras (o entre obras)."""
+    from app.stock import transferir_stock, breakdown_por_material
+    mat = _material_by_ref(input.get("material"), db)
+    if not mat:
+        return {"error": f"No encontré el material '{input.get('material')}'"}
+    try:
+        cant = float(input.get("cantidad", 0))
+    except (TypeError, ValueError):
+        return {"error": "cantidad inválida"}
+
+    origen_tipo = input.get("origen_tipo")
+    destino_tipo = input.get("destino_tipo")
+    if origen_tipo not in ("deposito_propio", "en_obra") or destino_tipo not in ("deposito_propio", "en_obra"):
+        return {"error": "origen_tipo y destino_tipo deben ser 'deposito_propio' o 'en_obra'"}
+
+    origen_obra_id = None
+    destino_obra_id = None
+    if origen_tipo == "en_obra":
+        o = _obra_by_ref(input.get("obra_origen"), db)
+        if not o:
+            return {"error": f"No encontré obra origen '{input.get('obra_origen')}'"}
+        origen_obra_id = o.id
+    if destino_tipo == "en_obra":
+        o = _obra_by_ref(input.get("obra_destino"), db)
+        if not o:
+            return {"error": f"No encontré obra destino '{input.get('obra_destino')}'"}
+        destino_obra_id = o.id
+
+    try:
+        transferir_stock(
+            db, material_id=mat.id, cantidad=cant,
+            origen_tipo=origen_tipo, origen_obra_id=origen_obra_id,
+            destino_tipo=destino_tipo, destino_obra_id=destino_obra_id,
+            nota=input.get("nota"), usuario_id=user.id,
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+    detalle = breakdown_por_material(db, material_id=mat.id)[0]
+    return {
+        "ok": True, "material": mat.nombre, "cantidad_movida": cant,
+        "origen": origen_tipo + (f" (obra {origen_obra_id})" if origen_obra_id else ""),
+        "destino": destino_tipo + (f" (obra {destino_obra_id})" if destino_obra_id else ""),
+        "ubicaciones_actuales": detalle["ubicaciones"],
+    }
+
+
+# ════════════════════════════════════════════════════════════════════
+# SPRINT 10 — PRESUPUESTOS DE MATERIALES POR OBRA
+# ════════════════════════════════════════════════════════════════════
+
+def t_consultar_presupuestos(input: dict, user: models.User, db: Session) -> dict:
+    """LECTURA — lista presupuestos, filtrable por obra y/o estado."""
+    from app.presupuestos_svc import serialize
+    q = db.query(models.Presupuesto)
+    if (ref := input.get("obra")) is not None:
+        o = _obra_by_ref(ref, db)
+        if not o:
+            return {"error": f"No encontré la obra '{ref}'"}
+        q = q.filter(models.Presupuesto.obra_id == o.id)
+    if (estado := input.get("estado")) is not None:
+        q = q.filter(models.Presupuesto.estado == estado)
+    presupuestos = q.order_by(models.Presupuesto.created_at.desc()).all()
+    return {
+        "total": len(presupuestos),
+        "presupuestos": [serialize(p, db) for p in presupuestos],
+    }
+
+
+def t_crear_presupuesto(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — crea un presupuesto en estado borrador con sus items.
+
+    Acepta items como lista de objetos {material, cantidad, precio?}.
+    'material' puede ser id o nombre. Si no se pasa precio, usa el del Material.
+    """
+    from app.presupuestos_svc import crear_presupuesto, serialize
+    obra = _obra_by_ref(input.get("obra"), db)
+    if not obra:
+        return {"error": f"No encontré la obra '{input.get('obra')}'"}
+    nombre = (input.get("nombre") or "").strip()
+    if not nombre:
+        return {"error": "Falta 'nombre' del presupuesto"}
+
+    items_in = input.get("items") or []
+    items_normalizados: list[dict] = []
+    for it in items_in:
+        mat_ref = it.get("material") if isinstance(it, dict) else None
+        mat = _material_by_ref(mat_ref, db) if mat_ref is not None else None
+        if not mat:
+            return {"error": f"No encontré el material '{mat_ref}' en un item"}
+        try:
+            cant = float(it.get("cantidad", 0))
+        except (TypeError, ValueError):
+            return {"error": f"cantidad inválida para material '{mat.nombre}'"}
+        if cant <= 0:
+            return {"error": f"cantidad debe ser > 0 para '{mat.nombre}'"}
+        items_normalizados.append({
+            "material_id": mat.id, "cantidad": cant,
+            "precio_unitario_estimado": it.get("precio"),
+        })
+
+    try:
+        p = crear_presupuesto(
+            db, obra_id=obra.id, nombre=nombre,
+            items=items_normalizados,
+            notas=input.get("notas"), created_by_id=user.id,
+        )
+    except ValueError as e:
+        return {"error": str(e)}
+    return {"ok": True, "presupuesto": serialize(p, db)}
+
+
+def t_aprobar_presupuesto(input: dict, user: models.User, db: Session) -> dict:
+    """ESCRITURA — marca un presupuesto como aprobado. Solo desde borrador."""
+    from app.presupuestos_svc import aprobar_presupuesto, serialize
+    pid = input.get("presupuesto_id")
+    if pid is None:
+        return {"error": "Falta 'presupuesto_id'"}
+    try:
+        p = aprobar_presupuesto(db, presupuesto_id=int(pid))
+    except (ValueError, TypeError) as e:
+        return {"error": str(e)}
+    return {"ok": True, "presupuesto": serialize(p, db)}
+
+
+# ════════════════════════════════════════════════════════════════════
 # SCHEMA PARA ANTHROPIC
 # ════════════════════════════════════════════════════════════════════
 
@@ -1827,6 +2102,131 @@ TOOLS_SCHEMA: list[dict[str, Any]] = [
             "required": ["obra", "tipo", "monto", "concepto", "medio_pago"],
         },
     },
+    # ─── Sprint 9: Stock multi-ubicación ───
+    {
+        "name": "consultar_stock",
+        "description": "LECTURA. Devuelve el desglose de stock por ubicación para uno o todos los materiales. "
+                       "Cada material reporta cantidad en depósito propio, en cada obra, y pendiente de retiro en proveedores.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "material": {"type": "string", "description": "id o nombre parcial. Si se omite, devuelve TODOS."},
+            },
+        },
+    },
+    {
+        "name": "cargar_compra_pendiente_retiro",
+        "description": "ESCRITURA. Registra una compra ya pagada/facturada cuya mercadería sigue en el proveedor (estado 'comprado_no_retirado').",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "material": {"type": "string", "description": "id o nombre del material"},
+                "proveedor": {"type": "string", "description": "id o nombre del proveedor"},
+                "cantidad": {"type": "number"},
+                "nota": {"type": "string"},
+            },
+            "required": ["material", "proveedor", "cantidad"],
+        },
+    },
+    {
+        "name": "retirar_de_proveedor",
+        "description": "ESCRITURA. Marca como retirada del proveedor parte (o toda) la mercadería pendiente. "
+                       "Va a depósito propio o directo a una obra. Decrementa 'comprado_no_retirado' y aumenta el destino.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "material": {"type": "string"},
+                "proveedor": {"type": "string"},
+                "cantidad": {"type": "number"},
+                "destino_tipo": {"type": "string", "enum": ["deposito_propio", "en_obra"]},
+                "obra": {"type": "string", "description": "obra destino. Requerido si destino_tipo=en_obra"},
+                "nota": {"type": "string"},
+            },
+            "required": ["material", "proveedor", "cantidad", "destino_tipo"],
+        },
+    },
+    {
+        "name": "consumir_en_obra",
+        "description": "ESCRITURA. Registra consumo de material en una obra (la cuadrilla usó X cantidad). "
+                       "Decrementa el stock de en_obra para ese material.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "material": {"type": "string"},
+                "obra": {"type": "string"},
+                "cantidad": {"type": "number"},
+                "nota": {"type": "string"},
+            },
+            "required": ["material", "obra", "cantidad"],
+        },
+    },
+    {
+        "name": "transferir_stock",
+        "description": "ESCRITURA. Mueve stock entre depósito propio y obras (o entre obras). "
+                       "Útil para devolver material no usado al depósito o redistribuir entre obras.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "material": {"type": "string"},
+                "cantidad": {"type": "number"},
+                "origen_tipo": {"type": "string", "enum": ["deposito_propio", "en_obra"]},
+                "obra_origen": {"type": "string", "description": "Requerido si origen_tipo=en_obra"},
+                "destino_tipo": {"type": "string", "enum": ["deposito_propio", "en_obra"]},
+                "obra_destino": {"type": "string", "description": "Requerido si destino_tipo=en_obra"},
+                "nota": {"type": "string"},
+            },
+            "required": ["material", "cantidad", "origen_tipo", "destino_tipo"],
+        },
+    },
+    # ─── Sprint 10: Presupuestos de materiales ───
+    {
+        "name": "consultar_presupuestos",
+        "description": "LECTURA. Lista presupuestos de materiales (filtrable por obra y/o estado borrador/aprobado/cerrado).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "estado": {"type": "string", "enum": ["borrador", "aprobado", "cerrado"]},
+            },
+        },
+    },
+    {
+        "name": "crear_presupuesto",
+        "description": "ESCRITURA. Crea un presupuesto de materiales para una obra (en estado borrador). "
+                       "Acepta items como lista [{material, cantidad, precio?}]. Si no se pasa precio, usa Material.precio_unitario.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "obra": {"type": "string"},
+                "nombre": {"type": "string", "description": "ej: 'Presupuesto cimientos enero'"},
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "material": {"type": "string"},
+                            "cantidad": {"type": "number"},
+                            "precio": {"type": "number"},
+                        },
+                        "required": ["material", "cantidad"],
+                    },
+                },
+                "notas": {"type": "string"},
+            },
+            "required": ["obra", "nombre", "items"],
+        },
+    },
+    {
+        "name": "aprobar_presupuesto",
+        "description": "ESCRITURA. Marca un presupuesto borrador como aprobado.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "presupuesto_id": {"type": "integer"},
+            },
+            "required": ["presupuesto_id"],
+        },
+    },
 ]
 
 
@@ -1860,6 +2260,16 @@ TOOL_HANDLERS: dict[str, Callable[[dict, models.User, Session], dict]] = {
     "crear_cliente": t_crear_cliente,
     "crear_obra": t_crear_obra,
     "enviar_whatsapp": t_enviar_whatsapp,
+    # ─── Sprint 9: stock (1 lectura + 4 escritura) ───
+    "consultar_stock": t_consultar_stock,
+    "cargar_compra_pendiente_retiro": t_cargar_compra_pendiente_retiro,
+    "retirar_de_proveedor": t_retirar_de_proveedor,
+    "consumir_en_obra": t_consumir_en_obra,
+    "transferir_stock": t_transferir_stock,
+    # ─── Sprint 10: presupuestos (1 lectura + 2 escritura) ───
+    "consultar_presupuestos": t_consultar_presupuestos,
+    "crear_presupuesto": t_crear_presupuesto,
+    "aprobar_presupuesto": t_aprobar_presupuesto,
 }
 
 
@@ -1889,4 +2299,12 @@ REQUIRES_CONFIRMATION_TOOLS: set[str] = {
     "reportar_evento",
     # Mensajería externa (visible a terceros)
     "enviar_whatsapp",
+    # Sprint 9 — Stock (todas las mutaciones requieren confirmación)
+    "cargar_compra_pendiente_retiro",
+    "retirar_de_proveedor",
+    "consumir_en_obra",
+    "transferir_stock",
+    # Sprint 10 — Presupuestos
+    "crear_presupuesto",
+    "aprobar_presupuesto",
 }

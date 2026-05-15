@@ -468,6 +468,97 @@ class MovimientoMaterialIn(BaseModel):
     nota: Optional[str] = None
 
 
+# ─── Sprint 9: Stock multi-ubicación ───────────────────────────────────────
+
+class StockUbicacionOut(BaseModel):
+    """Una fila de stock_material con referencias resueltas."""
+    ubicacion_tipo: str  # 'deposito_propio' | 'en_obra' | 'comprado_no_retirado'
+    ubicacion_ref: Optional[int] = None
+    ubicacion_nombre: Optional[str] = None  # nombre de la obra o del proveedor (resuelto)
+    cantidad: float
+
+    class Config:
+        from_attributes = True
+
+
+class MaterialConStockOut(MaterialOut):
+    """Material con desglose de stock por ubicación."""
+    stock_total_disponible: float = 0      # deposito + en_obras
+    stock_pendiente_retiro: float = 0      # comprado_no_retirado
+    ubicaciones: List[StockUbicacionOut] = []
+
+
+class StockMovimientoIn(BaseModel):
+    """Payload genérico para movimientos de stock (operaciones del agente)."""
+    material_id: int
+    cantidad: float
+    nota: Optional[str] = None
+
+
+class StockCompraPendienteIn(StockMovimientoIn):
+    proveedor_id: int
+
+
+class StockRetiroProveedorIn(StockMovimientoIn):
+    proveedor_id: int
+    destino_tipo: str  # 'deposito_propio' | 'en_obra'
+    destino_obra_id: Optional[int] = None  # requerido si destino_tipo == 'en_obra'
+
+
+class StockConsumoIn(StockMovimientoIn):
+    obra_id: int
+
+
+class StockTransferenciaIn(StockMovimientoIn):
+    origen_tipo: str   # 'deposito_propio' | 'en_obra'
+    origen_obra_id: Optional[int] = None
+    destino_tipo: str  # 'deposito_propio' | 'en_obra'
+    destino_obra_id: Optional[int] = None
+
+
+# ─── Sprint 10: Presupuestos ──────────────────────────────────────────────
+
+class PresupuestoItemIn(BaseModel):
+    material_id: int
+    cantidad: float
+    precio_unitario_estimado: Optional[float] = None  # si no se manda, toma el precio del Material
+
+
+class PresupuestoItemOut(BaseModel):
+    id: int
+    material_id: int
+    material_nombre: str
+    cantidad: float
+    precio_unitario_estimado: float
+    subtotal: float
+
+    class Config:
+        from_attributes = True
+
+
+class PresupuestoIn(BaseModel):
+    obra_id: int
+    nombre: str
+    items: List[PresupuestoItemIn] = []
+    notas: Optional[str] = None
+
+
+class PresupuestoOut(BaseModel):
+    id: int
+    obra_id: int
+    obra_nombre: str
+    nombre: str
+    estado: str
+    total_estimado: float
+    notas: Optional[str]
+    created_at: datetime
+    aprobado_at: Optional[datetime]
+    items: List[PresupuestoItemOut]
+
+    class Config:
+        from_attributes = True
+
+
 class ProveedorIn(BaseModel):
     nombre: str
     cuit: Optional[str] = None
