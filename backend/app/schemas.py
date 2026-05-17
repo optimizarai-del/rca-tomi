@@ -36,6 +36,9 @@ class UserOut(UserBase):
     xp: int
     onboarding_step: int
     created_at: datetime
+    # Sprint 11
+    telegram_chat_id: Optional[str] = None
+    telegram_username: Optional[str] = None
 
     class Config:
         from_attributes = True

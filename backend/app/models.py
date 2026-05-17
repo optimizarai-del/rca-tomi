@@ -222,6 +222,11 @@ class User(Base):
     avatar = Column(String)
     xp = Column(Integer, default=0)
     onboarding_step = Column(Integer, default=0)
+    # Sprint 11: vinculación con bot de Telegram
+    telegram_chat_id = Column(String, unique=True, index=True)  # int de Telegram como string
+    telegram_username = Column(String)
+    telegram_vinculacion_code = Column(String)  # código temporal generado por admin
+    telegram_vinculacion_exp = Column(DateTime)  # expira a los 15 min
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
