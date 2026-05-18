@@ -1,0 +1,99 @@
+# docker-compose.yml — stack productivo para Easy Panel / Coolify / VPS pelado.
+#
+# Levanta 3 servicios:
+#   - db        Postgres 16 con volumen persistente
+#   - backend   FastAPI + agente IA + bots (corre alembic upgrade head al arrancar)
+#   - frontend  nginx que sirve la SPA y hace proxy_pass /api → backend
+#
+# Uso:
+#   cp .env.example .env       # editar con tu ANTHROPIC_API_KEY etc.
+#   docker compose up -d --build
+#   docker compose logs -f
+#
+# Easy Panel:
+#   En Compose Service, pegar este archivo + el .env. Easy Panel se ocupa del
+#   reverse proxy / SSL al dominio que asignes al servicio "frontend".
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: rca_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rca}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rca_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-rca}
+    volumes:
+      - rca_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rca} -d ${POSTGRES_DB:-rca}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rca_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # DB
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://rca:rca_change_me@db:5432/rca}
+      # Auth
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY es obligatoria}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      # CORS: como el frontend hace proxy_pass al backend en el mismo dominio,
+      # CORS solo importa si llamás al backend desde otro origen (ej. apps mobile).
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Agente IA
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY obligatoria para el agente}
+      AGENT_MODEL: ${AGENT_MODEL:-claude-sonnet-4-5}
+      # WhatsApp (opcional)
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-log_only}
+      WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-change-me}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+      CLOUD_API_PHONE_ID: ${CLOUD_API_PHONE_ID:-}
+      CLOUD_API_TOKEN: ${CLOUD_API_TOKEN:-}
+      # Telegram (opcional)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_AUTHORIZED_CHAT_IDS: ${TELEGRAM_AUTHORIZED_CHAT_IDS:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Sentry (opcional)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENV: ${SENTRY_ENV:-production}
+      SENTRY_TRACES_RATE: ${SENTRY_TRACES_RATE:-0.1}
+      # Server
+      PORT: 8010
+    expose:
+      - "8010"
+    # Si querés exponer el backend a internet directamente (NO necesario si
+    # usás el frontend como proxy), descomentá:
+    # ports:
+    #   - "8010:8010"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Vacío → axios usa same-origin → nginx hace proxy a backend.
+        # Si querés que el frontend hable directo a un backend externo,
+        # poné acá la URL absoluta (ej: https://api.tudominio.com).
+        VITE_API_URL: ${VITE_API_URL:-}
+    container_name: rca_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_HOST: backend:8010
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  rca_pgdata:
