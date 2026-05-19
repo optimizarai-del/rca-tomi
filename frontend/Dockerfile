@@ -14,7 +14,10 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY frontend/package*.json /app/
-RUN npm ci
+# Usamos `npm install` en vez de `npm ci` porque el lock puede quedar
+# desincronizado cuando se agregan deps nuevas sin regenerarlo.
+# --no-audit/--no-fund: builds mas rapidos en CI/Docker.
+RUN npm install --no-audit --no-fund
 
 COPY frontend/ /app/
 
