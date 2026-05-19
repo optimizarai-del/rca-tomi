@@ -5,19 +5,19 @@
 #   - backend   FastAPI + agente IA + bots (corre alembic upgrade head al arrancar)
 #   - frontend  nginx que sirve la SPA y hace proxy_pass /api → backend
 #
-# Uso:
-#   cp .env.example .env       # editar con tu ANTHROPIC_API_KEY etc.
-#   docker compose up -d --build
-#   docker compose logs -f
-#
 # Easy Panel:
-#   En Compose Service, pegar este archivo + el .env. Easy Panel se ocupa del
-#   reverse proxy / SSL al dominio que asignes al servicio "frontend".
+#   - NO usamos container_name (Easy Panel asigna el suyo).
+#   - NO mapeamos ports (Easy Panel maneja el reverse proxy → asignás un dominio
+#     al servicio frontend y él rutea al puerto interno 80).
+#
+# Local (sin Easy Panel):
+#   cp .env.example .env
+#   docker compose up -d --build
+#   # Para acceder desde tu PC, descomenta los `ports:` de abajo.
 
 services:
   db:
     image: postgres:16-alpine
-    container_name: rca_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-rca}
@@ -35,7 +35,6 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: rca_backend
     restart: unless-stopped
     depends_on:
       db:
@@ -72,10 +71,6 @@ services:
       PORT: 8010
     expose:
       - "8010"
-    # Si querés exponer el backend a internet directamente (NO necesario si
-    # usás el frontend como proxy), descomentá:
-    # ports:
-    #   - "8010:8010"
 
   frontend:
     build:
@@ -83,17 +78,18 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         # Vacío → axios usa same-origin → nginx hace proxy a backend.
-        # Si querés que el frontend hable directo a un backend externo,
-        # poné acá la URL absoluta (ej: https://api.tudominio.com).
         VITE_API_URL: ${VITE_API_URL:-}
-    container_name: rca_frontend
     restart: unless-stopped
     depends_on:
       - backend
     environment:
       BACKEND_HOST: backend:8010
-    ports:
-      - "${FRONTEND_PORT:-8080}:80"
+    expose:
+      - "80"
+    # Easy Panel: agregá un Domain apuntando a este servicio en el puerto 80.
+    # Local: descomentá lo de abajo para acceder desde tu PC en http://localhost:8080
+    # ports:
+    #   - "${FRONTEND_PORT:-8080}:80"
 
 volumes:
   rca_pgdata:
