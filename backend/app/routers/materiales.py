@@ -8,12 +8,12 @@ from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 router = APIRouter(prefix="/api/materiales", tags=["materiales"])
 
 
-@router.get("/", response_model=List[schemas.MaterialOut])
+@router.get("", response_model=List[schemas.MaterialOut])
 def list_materiales(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     return db.query(models.Material).all()
 
 
-@router.post("/", response_model=schemas.MaterialOut, status_code=201)
+@router.post("", response_model=schemas.MaterialOut, status_code=201)
 def create_material(data: schemas.MaterialIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     m = models.Material(**data.model_dump())
     db.add(m); db.flush()

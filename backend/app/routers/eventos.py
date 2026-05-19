@@ -8,7 +8,7 @@ from app.security import get_current_user, scope_demo, stamp_demo
 router = APIRouter(prefix="/api/eventos", tags=["eventos"])
 
 
-@router.get("/", response_model=List[schemas.EventoOut])
+@router.get("", response_model=List[schemas.EventoOut])
 def list_eventos(
     obra_id: int = None,
     limit: int = Query(50, le=200),
@@ -19,7 +19,7 @@ def list_eventos(
     return q.order_by(models.Evento.fecha.desc()).limit(limit).all()
 
 
-@router.post("/", response_model=schemas.EventoOut, status_code=201)
+@router.post("", response_model=schemas.EventoOut, status_code=201)
 def create_evento(data: schemas.EventoIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     e = models.Evento(**data.model_dump(), usuario_id=user.id, canal=models.CanalCarga.web)
     db.add(e); db.commit(); db.refresh(e)

@@ -8,12 +8,12 @@ from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 router = APIRouter(prefix="/api/proveedores", tags=["proveedores"])
 
 
-@router.get("/", response_model=List[schemas.ProveedorOut])
+@router.get("", response_model=List[schemas.ProveedorOut])
 def list_proveedores(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     return db.query(models.Proveedor).all()
 
 
-@router.post("/", response_model=schemas.ProveedorOut, status_code=201)
+@router.post("", response_model=schemas.ProveedorOut, status_code=201)
 def create_proveedor(data: schemas.ProveedorIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     p = models.Proveedor(**data.model_dump())
     db.add(p); db.commit(); db.refresh(p)

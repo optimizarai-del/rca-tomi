@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 VINCULACION_TTL_MIN = 15  # el código del Telegram link expira en 15 minutos
 
 
-@router.get("/", response_model=List[schemas.UserOut])
+@router.get("", response_model=List[schemas.UserOut])
 def list_users(db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     return db.query(models.User).filter(models.User.is_active == True).all()
 

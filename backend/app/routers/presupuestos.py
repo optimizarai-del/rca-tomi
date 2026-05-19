@@ -19,7 +19,7 @@ from app.presupuestos_svc import (
 router = APIRouter(prefix="/api/presupuestos", tags=["presupuestos"])
 
 
-@router.get("/", response_model=List[schemas.PresupuestoOut])
+@router.get("", response_model=List[schemas.PresupuestoOut])
 def listar(
     obra_id: Optional[int] = None, estado: Optional[str] = None,
     db: Session = Depends(get_db), _: models.User = Depends(get_current_user),
@@ -40,7 +40,7 @@ def detalle(pid: int, db: Session = Depends(get_db), _: models.User = Depends(ge
     return serialize(p, db)
 
 
-@router.post("/", response_model=schemas.PresupuestoOut, status_code=201)
+@router.post("", response_model=schemas.PresupuestoOut, status_code=201)
 def endpoint_crear(
     payload: schemas.PresupuestoIn,
     db: Session = Depends(get_db),

@@ -8,12 +8,12 @@ from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 router = APIRouter(prefix="/api/cuadrillas", tags=["cuadrillas"])
 
 
-@router.get("/", response_model=List[schemas.CuadrillaOut])
+@router.get("", response_model=List[schemas.CuadrillaOut])
 def list_cuadrillas(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     return db.query(models.Cuadrilla).filter(models.Cuadrilla.activa == True).all()
 
 
-@router.post("/", response_model=schemas.CuadrillaOut, status_code=201)
+@router.post("", response_model=schemas.CuadrillaOut, status_code=201)
 def create_cuadrilla(data: schemas.CuadrillaIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
     c = models.Cuadrilla(**data.model_dump())
     db.add(c); db.commit(); db.refresh(c)

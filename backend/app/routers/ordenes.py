@@ -9,7 +9,7 @@ from app.security import get_current_user, scope_demo, stamp_demo
 router = APIRouter(prefix="/api/ordenes", tags=["ordenes"])
 
 
-@router.get("/", response_model=List[schemas.OrdenOut])
+@router.get("", response_model=List[schemas.OrdenOut])
 def list_ordenes(obra_id: int = None, cuadrilla_id: int = None, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     q = db.query(models.OrdenTrabajo)
     if obra_id: q = q.filter(models.OrdenTrabajo.obra_id == obra_id)
@@ -17,7 +17,7 @@ def list_ordenes(obra_id: int = None, cuadrilla_id: int = None, db: Session = De
     return q.order_by(models.OrdenTrabajo.created_at.desc()).all()
 
 
-@router.post("/", response_model=schemas.OrdenOut, status_code=201)
+@router.post("", response_model=schemas.OrdenOut, status_code=201)
 def create_orden(data: schemas.OrdenIn, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     o = models.OrdenTrabajo(**data.model_dump(), creada_por_id=user.id, canal_creacion=models.CanalCarga.web)
     db.add(o); db.commit(); db.refresh(o)

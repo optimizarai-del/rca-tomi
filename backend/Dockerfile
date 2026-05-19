@@ -33,4 +33,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8010/health || exit 1
 
 # Aplicar migraciones y arrancar — todo con SIGTERM-aware
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8010}"]
+# --proxy-headers + --forwarded-allow-ips='*': respeta X-Forwarded-Proto del
+# reverse proxy (Easy Panel / Traefik) para que los redirects 307 vuelvan https
+# en vez de http (evita mixed content en /api/X → /api/X/).
+CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8010} --proxy-headers --forwarded-allow-ips=*"]

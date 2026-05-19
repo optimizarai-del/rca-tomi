@@ -25,7 +25,7 @@ from app.stock import (
 router = APIRouter(prefix="/api/stock", tags=["stock"])
 
 
-@router.get("/", response_model=List[schemas.MaterialConStockOut])
+@router.get("", response_model=List[schemas.MaterialConStockOut])
 def listar_stock(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
     """Devuelve todos los materiales con desglose de stock por ubicación."""
     return breakdown_por_material(db)
