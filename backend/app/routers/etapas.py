@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin
+from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/etapas", tags=["etapas"])
 
@@ -13,9 +13,10 @@ router = APIRouter(prefix="/api/etapas", tags=["etapas"])
 def list_etapas(
     obra_id: int = None,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.EtapaObra)
+    q = scope_demo(q, models.EtapaObra, user)
     if obra_id:
         q = q.filter(models.EtapaObra.obra_id == obra_id)
     return q.order_by(models.EtapaObra.obra_id, models.EtapaObra.nro_etapa).all()
@@ -25,7 +26,7 @@ def list_etapas(
 def create_etapa(
     data: schemas.EtapaIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     e = models.EtapaObra(**data.model_dump())
     db.add(e); db.commit(); db.refresh(e)
@@ -37,7 +38,7 @@ def update_etapa(
     eid: int,
     data: schemas.EtapaIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     e = db.query(models.EtapaObra).filter(models.EtapaObra.id == eid).first()
     if not e:
@@ -65,7 +66,7 @@ def update_etapa(
 
 
 @router.delete("/{eid}", status_code=204)
-def delete_etapa(eid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_etapa(eid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     e = db.query(models.EtapaObra).filter(models.EtapaObra.id == eid).first()
     if not e:
         raise HTTPException(404, "Etapa no encontrada")

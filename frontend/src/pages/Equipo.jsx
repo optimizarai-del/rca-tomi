@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Send, Link2, X } from 'lucide-react'
 import api from '../utils/api'
 
 const ROLES = [
@@ -13,6 +13,7 @@ export default function Equipo() {
   const [list, setList] = useState([])
   const [open, setOpen] = useState(false)
   const [form, setForm] = useState({ name:'', email:'', phone:'', password:'', role:'usuario_bot' })
+  const [tgCode, setTgCode] = useState(null)   // { user, code, expires_in_minutes }
 
   const load = () => api.get('/api/users/').then(r => setList(r.data))
   useEffect(() => { load() }, [])
@@ -27,6 +28,16 @@ export default function Equipo() {
   }
   const cambiarRol = async (id, role) => { await api.patch(`/api/users/${id}/role`, { role }); load() }
   const eliminar = async (id) => { if (confirm('¿Eliminar?')) { await api.delete(`/api/users/${id}`); load() } }
+
+  const generarCodigoTelegram = async (user) => {
+    const r = await api.post(`/api/users/${user.id}/telegram/generate-code`)
+    setTgCode({ user, ...r.data })
+  }
+  const desvincularTelegram = async (user) => {
+    if (!confirm(`¿Desvincular Telegram de ${user.name}?`)) return
+    await api.delete(`/api/users/${user.id}/telegram`)
+    load()
+  }
 
   return (
     <div className="max-w-5xl mx-auto animate-fade-in">
@@ -43,19 +54,47 @@ export default function Equipo() {
 
       <div className="card divide-y divide-border">
         {list.map(u => (
-          <div key={u.id} className="p-5 flex items-center gap-4">
+          <div key={u.id} className="p-5 flex items-center gap-4 flex-wrap">
             <div className="w-11 h-11 rounded-full bg-navy text-bone grid place-items-center font-semibold shrink-0">
               {u.name?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-semibold">{u.name} {u.last_name || ''}</div>
-              <div className="text-xs text-muted truncate mt-0.5">{u.email} {u.phone && `· ${u.phone}`}</div>
+              <div className="font-semibold flex items-center gap-2 flex-wrap">
+                {u.name} {u.last_name || ''}
+                {u.telegram_chat_id && (
+                  <span className="chip-olive flex items-center gap-1 text-[10px]">
+                    <Send size={9}/> Telegram{u.telegram_username ? ` @${u.telegram_username}` : ''}
+                  </span>
+                )}
+              </div>
+              <div className="text-xs text-muted truncate mt-0.5">
+                {u.email} {u.phone && `· ${u.phone}`}
+              </div>
             </div>
             <select value={u.role} onChange={e=>cambiarRol(u.id, e.target.value)}
               className="input !w-auto !py-2 text-sm">
               {ROLES.map(r => <option key={r.v} value={r.v}>{r.l}</option>)}
             </select>
-            <button onClick={()=>eliminar(u.id)} className="text-muted/60 hover:text-danger p-2"><Trash2 size={14}/></button>
+            {u.telegram_chat_id ? (
+              <button
+                onClick={() => desvincularTelegram(u)}
+                className="btn-ghost text-xs"
+                title="Desvincular Telegram"
+              >
+                <X size={12}/> Desvincular TG
+              </button>
+            ) : (
+              <button
+                onClick={() => generarCodigoTelegram(u)}
+                className="btn-ghost text-xs"
+                title="Generar código de vinculación de Telegram"
+              >
+                <Link2 size={12}/> Vincular TG
+              </button>
+            )}
+            <button onClick={()=>eliminar(u.id)} className="text-muted/60 hover:text-danger p-2">
+              <Trash2 size={14}/>
+            </button>
           </div>
         ))}
       </div>
@@ -78,6 +117,29 @@ export default function Equipo() {
               <button className="btn-primary">Invitar</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {tgCode && (
+        <div className="fixed inset-0 bg-navy/30 backdrop-blur-sm grid place-items-center z-50 p-4 animate-fade-in" onClick={()=>setTgCode(null)}>
+          <div onClick={e=>e.stopPropagation()} className="card w-full max-w-md p-8 space-y-4 shadow-lift animate-scale-in">
+            <h2 className="hero-title text-2xl flex items-center gap-2">
+              <Send size={20}/> Vincular Telegram
+            </h2>
+            <p className="text-sm text-muted">
+              Pedile a <strong>{tgCode.user.name}</strong> que abra el bot de Telegram y mande este mensaje:
+            </p>
+            <div className="bg-bone-200 rounded-xl p-4 font-mono text-center text-2xl tracking-widest">
+              /vincular {tgCode.code}
+            </div>
+            <p className="text-xs text-muted">
+              El código expira en {tgCode.expires_in_minutes} minutos. Una vez vinculado,
+              el usuario podrá interactuar con el agente IA y los comandos slash desde Telegram.
+            </p>
+            <div className="flex gap-2 justify-end pt-2">
+              <button onClick={()=>setTgCode(null)} className="btn-primary">Listo</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

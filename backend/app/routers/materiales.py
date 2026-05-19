@@ -3,18 +3,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin
+from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/materiales", tags=["materiales"])
 
 
-@router.get("/", response_model=List[schemas.MaterialOut])
-def list_materiales(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
-    return db.query(models.Material).all()
+@router.get("", response_model=List[schemas.MaterialOut])
+def list_materiales(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return scope_demo(db.query(models.Material), models.Material, user).all()
 
 
-@router.post("/", response_model=schemas.MaterialOut, status_code=201)
-def create_material(data: schemas.MaterialIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+@router.post("", response_model=schemas.MaterialOut, status_code=201)
+def create_material(data: schemas.MaterialIn, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     m = models.Material(**data.model_dump())
     db.add(m); db.flush()
     # Sprint 9: si vino con stock inicial, lo asentamos en depósito propio
@@ -49,7 +49,7 @@ def registrar_movimiento(
 
 
 @router.delete("/{mid}", status_code=204)
-def delete_material(mid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_material(mid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     m = db.query(models.Material).filter(models.Material.id == mid).first()
     if not m: raise HTTPException(404, "Material no encontrado")
     # Sprint 9: limpiar stock multi-ubicación asociado (no hay cascade)

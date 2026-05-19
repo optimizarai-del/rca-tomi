@@ -1,0 +1,75 @@
+# docker-compose.yml — stack productivo para Easy Panel / Coolify / VPS pelado.
+#
+# Levanta 2 servicios (DB externa en Supabase):
+#   - backend   FastAPI + agente IA + bots (corre alembic upgrade head al arrancar)
+#   - frontend  nginx que sirve la SPA y hace proxy_pass /api → backend
+#
+# DB: usamos Supabase Postgres managed. La connection string va en
+# DATABASE_URL (variable de entorno). Para el Session pooler de Supabase:
+#   postgresql+psycopg://postgres.PROJREF:PASS@aws-X-REGION.pooler.supabase.com:5432/postgres
+#
+# Easy Panel:
+#   - NO usamos container_name (Easy Panel asigna el suyo).
+#   - NO mapeamos ports (asignás un Domain al servicio frontend en el puerto 80).
+#
+# Local (sin Easy Panel):
+#   cp .env.example .env       # configurar DATABASE_URL con tu Supabase
+#   docker compose up -d --build
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      # DB — Supabase Postgres managed
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL obligatoria — usar Session pooler de Supabase}
+      # Auth
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY es obligatoria}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      # CORS: como el frontend hace proxy_pass al backend en el mismo dominio,
+      # CORS solo importa si llamás al backend desde otro origen (ej. apps mobile).
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      # Agente IA
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY obligatoria para el agente}
+      AGENT_MODEL: ${AGENT_MODEL:-claude-sonnet-4-5}
+      # WhatsApp (opcional)
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-log_only}
+      WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-change-me}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+      CLOUD_API_PHONE_ID: ${CLOUD_API_PHONE_ID:-}
+      CLOUD_API_TOKEN: ${CLOUD_API_TOKEN:-}
+      # Telegram (opcional)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_AUTHORIZED_CHAT_IDS: ${TELEGRAM_AUTHORIZED_CHAT_IDS:-}
+      TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET:-}
+      # Sentry (opcional)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SENTRY_ENV: ${SENTRY_ENV:-production}
+      SENTRY_TRACES_RATE: ${SENTRY_TRACES_RATE:-0.1}
+      # Server
+      PORT: 8010
+    expose:
+      - "8010"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # Vacío → axios usa same-origin → nginx hace proxy a backend.
+        VITE_API_URL: ${VITE_API_URL:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_HOST: backend:8010
+    expose:
+      - "80"
+    # Easy Panel: agregá un Domain apuntando a este servicio en el puerto 80.
+    # Local: descomentá lo de abajo para acceder desde tu PC en http://localhost:8080
+    # ports:
+    #   - "${FRONTEND_PORT:-8080}:80"

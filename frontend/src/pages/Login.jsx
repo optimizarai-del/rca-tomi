@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Sparkles } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import Logo from '../components/Logo'
 
 export default function Login() {
-  const [email, setEmail] = useState('admin@demo.com')
-  const [password, setPassword] = useState('demo1234')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
-  const { login } = useAuth()
+  const [demoLoading, setDemoLoading] = useState(false)
+  const { login, loginDemo } = useAuth()
   const nav = useNavigate()
 
   const submit = async (e) => {
@@ -23,11 +24,20 @@ export default function Login() {
     } finally { setLoading(false) }
   }
 
+  const handleDemo = async () => {
+    setErr(''); setDemoLoading(true)
+    try {
+      await loginDemo()
+      nav('/world')
+    } catch (e) {
+      setErr(e.response?.data?.detail || 'Error al ingresar en modo demo')
+    } finally { setDemoLoading(false) }
+  }
+
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.1fr_1fr] bg-bg">
       {/* Left — Brand keynote */}
       <div className="hidden lg:flex flex-col justify-between p-14 xl:p-20 bg-navy text-bone relative overflow-hidden">
-        {/* Ambient gradient blobs — Apple-like depth */}
         <div className="absolute -top-40 -left-40 w-[500px] h-[500px] rounded-full
                         bg-olive/20 blur-3xl"/>
         <div className="absolute -bottom-40 -right-20 w-[420px] h-[420px] rounded-full
@@ -84,18 +94,31 @@ export default function Login() {
               <input className="input" type="password" value={password} onChange={(e)=>setPassword(e.target.value)} required/>
             </div>
             {err && <div className="text-danger text-sm">{err}</div>}
-            <button disabled={loading} className="btn-primary btn-lg w-full">
+            <button disabled={loading || demoLoading} className="btn-primary btn-lg w-full">
               {loading ? 'Ingresando...' : <>Continuar <ArrowRight size={16}/></>}
             </button>
           </form>
 
+          {/* Sprint 12: Demo dual scope */}
           <div className="mt-8 pt-6 border-t border-border/70">
             <p className="text-[11px] uppercase tracking-[0.15em] text-muted/70 text-center mb-3">
-              Demo
+              ¿Querés probar primero?
             </p>
-            <div className="bg-bone-100/80 rounded-2xl py-3 text-[13px] font-mono text-navy/80 text-center tracking-tight">
-              admin@demo.com  ·  demo1234
-            </div>
+            <button
+              type="button"
+              onClick={handleDemo}
+              disabled={loading || demoLoading}
+              className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-2xl
+                         bg-olive-100/40 hover:bg-olive-100/70 active:scale-[0.98]
+                         text-olive-700 font-medium text-[14px] tracking-tight
+                         border border-olive-200/50 transition-all disabled:opacity-50">
+              <Sparkles size={15} />
+              {demoLoading ? 'Entrando al demo...' : 'Probar en modo demo'}
+            </button>
+            <p className="text-[11px] text-muted/60 text-center mt-3 leading-relaxed">
+              Acceso instantáneo con datos de prueba. La base real queda intacta —
+              cuando quieras importar obras reales, salí del demo y creá tu cuenta.
+            </p>
           </div>
 
           <div className="text-center mt-8 text-[13px] text-muted">

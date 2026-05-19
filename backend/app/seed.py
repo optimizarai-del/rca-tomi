@@ -13,13 +13,16 @@ Carga:
 from datetime import date, timedelta
 from app.database import Base, engine, SessionLocal
 from app import models
-from app.security import hash_password
+from app.security import hash_password, set_demo_scope
 
 
 def run():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
+        # Sprint 12: el chequeo de "ya hay datos" lo hacemos SIN scope para
+        # ver TODOS los users (demo y reales).
+        set_demo_scope(None)
         if db.query(models.User).count() > 0:
             print("[seed] Ya hay datos. Si querés reiniciar, corré scripts/reset_db.py")
             return
@@ -42,12 +45,27 @@ def run():
         )
         db.add_all([ri, mt, ex]); db.flush()
 
-        # ─── USUARIOS ───
+        # ─── USUARIO REAL (super_admin, ve datos reales) ───
+        # Se crea SIN scope demo → is_demo=False.
         admin = models.User(
             name="Admin", last_name="RCA", email="admin@rca.com",
             phone="+5491100000001", password_hash=hash_password("demo1234"),
             role=models.UserRole.super_admin, status=models.UserStatus.active,
             avatar="🛡️", xp=0,
+        )
+        db.add(admin); db.flush()
+
+        # ─── ACTIVAR SCOPE DEMO para todo lo que viene ───
+        # El auto-stamp marcará todas las entidades creadas a partir de acá
+        # con is_demo=True automáticamente.
+        set_demo_scope(True)
+
+        # Usuario DEMO (se loguea via /api/auth/demo-login)
+        demo_user = models.User(
+            name="Demo", last_name="RCA", email="demo@rca.com",
+            phone="+5491199999999", password_hash=hash_password("demo1234"),
+            role=models.UserRole.admin_finanzas, status=models.UserStatus.active,
+            avatar="🧪", xp=0,
         )
         socio_a = models.User(
             name="Socio", last_name="A", email="socio.a@rca.com",
@@ -67,7 +85,7 @@ def run():
             role=models.UserRole.supervisor, status=models.UserStatus.active,
             avatar="👷", xp=0,
         )
-        db.add_all([admin, socio_a, socio_b, capataz]); db.flush()
+        db.add_all([demo_user, socio_a, socio_b, capataz]); db.flush()
 
         # ─── SOCIOS (Sprint 7: tabla propia, antes era User con rol admin_finanzas) ───
         socio_entity_a = models.Socio(
@@ -346,11 +364,15 @@ def run():
         ])
 
         db.commit()
-        print("[seed] OK — datos demo cargados.")
-        print(f"   Login: admin@rca.com / demo1234")
-        print(f"   2 obras (IDS, SP), 7 etapas, 13+ movimientos, 1 aporte de socio.")
+        print("[seed] OK - datos demo cargados (is_demo=True).")
+        print("   Login normal (ve datos reales):  admin@rca.com / demo1234")
+        print("   Login demo (ve solo estos datos): demo@rca.com / demo1234")
+        print("   Tambien: boton 'Probar modo demo' en /login.")
+        print("   2 obras (IDS, SP), 7 etapas, 13+ movimientos, 1 aporte de socio.")
     finally:
         db.close()
+        # Limpiar el scope despues del seed
+        set_demo_scope(None)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ from app.routers import (
     auth, users, obras, cuadrillas, materiales, proveedores,
     ordenes, eventos, dashboard, whatsapp, agent,
     clientes, regimenes_fiscales, etapas, movimientos, aportes, comprobantes,
-    notifications, approval, socios, stock, presupuestos,
+    notifications, approval, socios, stock, presupuestos, telegram,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -48,7 +48,7 @@ ROUTERS = [
     movimientos, aportes, comprobantes,
     cuadrillas, materiales, proveedores, ordenes, eventos,
     dashboard, whatsapp, agent, notifications, approval, socios,
-    stock, presupuestos,
+    stock, presupuestos, telegram,
 ]
 
 for r in ROUTERS:

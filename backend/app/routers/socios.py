@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin
+from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/socios", tags=["socios"])
 
@@ -17,9 +17,10 @@ router = APIRouter(prefix="/api/socios", tags=["socios"])
 def list_socios(
     activos_solo: bool = True,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.Socio)
+    q = scope_demo(q, models.Socio, user)
     if activos_solo:
         q = q.filter(models.Socio.activo == True)  # noqa: E712
     return q.order_by(models.Socio.nombre).all()
@@ -29,7 +30,7 @@ def list_socios(
 def create_socio(
     data: schemas.SocioIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     if data.cuit:
         existente = db.query(models.Socio).filter(models.Socio.cuit == data.cuit).first()
@@ -45,7 +46,7 @@ def create_socio(
 
 
 @router.get("/{sid}", response_model=schemas.SocioOut)
-def get_socio(sid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def get_socio(sid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     s = db.query(models.Socio).filter(models.Socio.id == sid).first()
     if not s:
         raise HTTPException(404, "Socio no encontrado")
@@ -57,7 +58,7 @@ def update_socio(
     sid: int,
     data: schemas.SocioIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     s = db.query(models.Socio).filter(models.Socio.id == sid).first()
     if not s:
@@ -69,7 +70,7 @@ def update_socio(
 
 
 @router.delete("/{sid}", status_code=204)
-def delete_socio(sid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_socio(sid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     s = db.query(models.Socio).filter(models.Socio.id == sid).first()
     if not s:
         raise HTTPException(404, "Socio no encontrado")

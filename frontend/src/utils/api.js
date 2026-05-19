@@ -1,7 +1,16 @@
 import axios from 'axios'
 
+// VITE_API_URL puede ser:
+//   - undefined  → fallback a http://localhost:8000 (dev sin .env)
+//   - "http://host:port"  → dev/prod apuntando a un backend externo
+//   - ""  → producción con nginx haciendo proxy_pass al backend en el mismo dominio
+const envUrl = import.meta.env.VITE_API_URL
+const baseURL = envUrl !== undefined && envUrl !== null
+  ? envUrl
+  : 'http://localhost:8000'
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL,
   headers: { 'Content-Type': 'application/json' },
 })
 

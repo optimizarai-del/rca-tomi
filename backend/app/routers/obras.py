@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin
+from app.security import get_current_user, require_admin, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api", tags=["obras"])
 
@@ -44,9 +44,10 @@ def list_obras(
     estado: Optional[models.ObraStatus] = None,
     cliente_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.Obra)
+    q = scope_demo(q, models.Obra, user)
     if estado:
         q = q.filter(models.Obra.estado == estado)
     if cliente_id:
@@ -58,20 +59,21 @@ def list_obras(
 def create_obra(
     data: schemas.ObraIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     if not db.query(models.Cliente).filter(models.Cliente.id == data.cliente_id).first():
         raise HTTPException(400, "Cliente no encontrado")
     if db.query(models.Obra).filter(models.Obra.codigo == data.codigo).first():
         raise HTTPException(400, "Ya existe una obra con ese código")
     o = models.Obra(**data.model_dump())
+    stamp_demo(o, user)
     db.add(o); db.commit(); db.refresh(o)
     return o
 
 
 @router.get("/obras/{oid}", response_model=schemas.ObraOut)
-def get_obra(oid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
-    o = db.query(models.Obra).filter(models.Obra.id == oid).first()
+def get_obra(oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    o = scope_demo(db.query(models.Obra), models.Obra, user).filter(models.Obra.id == oid).first()
     if not o:
         raise HTTPException(404, "Obra no encontrada")
     return o

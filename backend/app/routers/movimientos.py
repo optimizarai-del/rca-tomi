@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin, require_finanzas
+from app.security import get_current_user, require_admin, require_finanzas, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/movimientos", tags=["movimientos"])
 
@@ -41,9 +41,10 @@ def list_movimientos(
     estado: Optional[models.EstadoMovimiento] = None,
     limit: int = Query(default=200, le=1000),
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.MovimientoObra)
+    q = scope_demo(q, models.MovimientoObra, user)
     if obra_id:
         q = q.filter(models.MovimientoObra.obra_id == obra_id)
     if etapa_id:
@@ -88,7 +89,7 @@ def create_movimiento(
 # ─── REPORTES / VISTAS (deben venir ANTES de /{mid} para no chocar) ───
 
 @router.get("/obra/{oid}/saldo")
-def saldo_obra(oid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def saldo_obra(oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     """R1: saldo = SUM(INGRESO) - SUM(EGRESO), sin filtrar por estado."""
     rows = db.query(
         models.MovimientoObra.tipo,
@@ -101,7 +102,7 @@ def saldo_obra(oid: int, db: Session = Depends(get_db), _: models.User = Depends
 
 @router.get("/obra/{oid}/flujo-caja")
 def flujo_caja_semanal(
-    oid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)
+    oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)
 ):
     """Flujo de caja agrupado por semana, con saldo acumulado."""
     movs = db.query(models.MovimientoObra).filter(
@@ -142,7 +143,7 @@ def flujo_proyectado(
     oid: int,
     horizonte_dias: int = 90,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     """Flujo proyectado: movimientos reales + cheques a vencer + etapas estimadas."""
     today = date.today()
@@ -195,7 +196,7 @@ def flujo_proyectado(
 def cheques_a_vencer(
     dias: int = 30,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     """Cheques propios que vencen en los próximos N días."""
     today = date.today()
@@ -225,7 +226,7 @@ def cheques_a_vencer(
 def descalce_fiscal(
     obra_id: Optional[int] = None,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_finanzas),
+    user: models.User = Depends(require_finanzas),
 ):
     """R4: detecta obras donde egresos con comprobante > ingresos con comprobante.
 
@@ -265,7 +266,7 @@ def descalce_fiscal(
 # ─── CRUD por id (al final para no chocar con rutas estáticas) ───
 
 @router.get("/{mid}", response_model=schemas.MovimientoOut)
-def get_movimiento(mid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def get_movimiento(mid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     m = db.query(models.MovimientoObra).filter(models.MovimientoObra.id == mid).first()
     if not m:
         raise HTTPException(404, "Movimiento no encontrado")
@@ -277,7 +278,7 @@ def update_movimiento(
     mid: int,
     data: schemas.MovimientoIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     m = db.query(models.MovimientoObra).filter(models.MovimientoObra.id == mid).first()
     if not m:
@@ -292,7 +293,7 @@ def update_movimiento(
 
 @router.delete("/{mid}", status_code=204)
 def delete_movimiento(
-    mid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)
+    mid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)
 ):
     m = db.query(models.MovimientoObra).filter(models.MovimientoObra.id == mid).first()
     if not m:

@@ -1,41 +1,41 @@
 # Frontend RCA — build estático con Vite, servido con nginx
-# Build: docker build -t rca-frontend ./frontend
-# Run:   docker run -p 5175:80 rca-frontend
-# La URL del backend se inyecta en build-time con VITE_API_URL
+# Build: docker build -f frontend/Dockerfile -t rca-frontend .
+# Run:   docker run -p 8080:80 -e BACKEND_HOST=host.docker.internal:8010 rca-frontend
+#
+# Variables:
+#   VITE_API_URL (build-time)  → URL del backend. VACÍO = same-origin
+#                                (nginx proxea /api → backend en este mismo
+#                                container). Recomendado para producción.
+#   BACKEND_HOST (runtime)     → host:puerto del backend (default "backend:8010").
+#                                Se usa en el proxy_pass de nginx via envsubst.
 
-# ── Stage 1: build ──
+# ── Stage 1: build de Vite ──
 FROM node:20-alpine AS build
 WORKDIR /app
 
-# Layer de deps con cache
 COPY frontend/package*.json /app/
-RUN npm ci
+# Usamos `npm install` en vez de `npm ci` porque el lock puede quedar
+# desincronizado cuando se agregan deps nuevas sin regenerarlo.
+# --no-audit/--no-fund: builds mas rapidos en CI/Docker.
+RUN npm install --no-audit --no-fund
 
-# Código
 COPY frontend/ /app/
 
-# Variable build-time
-ARG VITE_API_URL=http://localhost:8010
+ARG VITE_API_URL=""
 ENV VITE_API_URL=${VITE_API_URL}
 
 RUN npm run build
 
-# ── Stage 2: nginx que sirve el bundle ──
+# ── Stage 2: nginx que sirve el bundle + proxy ──
 FROM nginx:1.25-alpine
 
-# Config básica de nginx para SPA (fallback a index.html para client-side routing)
-RUN printf 'server {\n\
-    listen 80;\n\
-    location / {\n\
-        root /usr/share/nginx/html;\n\
-        index index.html;\n\
-        try_files $uri /index.html;\n\
-    }\n\
-    location = /healthz {\n\
-        return 200 "ok";\n\
-        add_header Content-Type text/plain;\n\
-    }\n\
-}\n' > /etc/nginx/conf.d/default.conf
+# Default sobreescribible en runtime
+ENV BACKEND_HOST=backend:8010
+
+# Plantilla con ${BACKEND_HOST} — nginx la procesa con envsubst al arrancar
+# (la imagen oficial de nginx ya lo hace para todo lo que esté en /etc/nginx/templates)
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf.template /etc/nginx/templates/default.conf.template
 
 COPY --from=build /app/dist /usr/share/nginx/html
 

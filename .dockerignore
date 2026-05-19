@@ -1,0 +1,44 @@
+# .dockerignore en la raíz (aplica cuando docker-compose usa context: .)
+# Mantiene los builds rápidos excluyendo lo que cada Dockerfile NO necesita.
+
+# Git / docs / IDE
+.git/
+.github/
+.vscode/
+.idea/
+*.md
+!README.md
+
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.coverage
+**/.venv/
+**/venv/
+
+# Node
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Env files locales — NUNCA copiar al build
+.env
+.env.local
+**/.env
+**/.env.local
+
+# DBs locales
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/fielddata.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
