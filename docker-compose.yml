@@ -1,47 +1,30 @@
 # docker-compose.yml — stack productivo para Easy Panel / Coolify / VPS pelado.
 #
-# Levanta 3 servicios:
-#   - db        Postgres 16 con volumen persistente
+# Levanta 2 servicios (DB externa en Supabase):
 #   - backend   FastAPI + agente IA + bots (corre alembic upgrade head al arrancar)
 #   - frontend  nginx que sirve la SPA y hace proxy_pass /api → backend
 #
+# DB: usamos Supabase Postgres managed. La connection string va en
+# DATABASE_URL (variable de entorno). Para el Session pooler de Supabase:
+#   postgresql+psycopg://postgres.PROJREF:PASS@aws-X-REGION.pooler.supabase.com:5432/postgres
+#
 # Easy Panel:
 #   - NO usamos container_name (Easy Panel asigna el suyo).
-#   - NO mapeamos ports (Easy Panel maneja el reverse proxy → asignás un dominio
-#     al servicio frontend y él rutea al puerto interno 80).
+#   - NO mapeamos ports (asignás un Domain al servicio frontend en el puerto 80).
 #
 # Local (sin Easy Panel):
-#   cp .env.example .env
+#   cp .env.example .env       # configurar DATABASE_URL con tu Supabase
 #   docker compose up -d --build
-#   # Para acceder desde tu PC, descomenta los `ports:` de abajo.
 
 services:
-  db:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-rca}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rca_change_me}
-      POSTGRES_DB: ${POSTGRES_DB:-rca}
-    volumes:
-      - rca_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rca} -d ${POSTGRES_DB:-rca}"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     environment:
-      # DB
-      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://rca:rca_change_me@db:5432/rca}
+      # DB — Supabase Postgres managed
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL obligatoria — usar Session pooler de Supabase}
       # Auth
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY es obligatoria}
       ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
@@ -90,6 +73,3 @@ services:
     # Local: descomentá lo de abajo para acceder desde tu PC en http://localhost:8080
     # ports:
     #   - "${FRONTEND_PORT:-8080}:80"
-
-volumes:
-  rca_pgdata:
