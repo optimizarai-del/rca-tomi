@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
-from app.security import require_admin, hash_password
+from app.security import require_admin, hash_password, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 

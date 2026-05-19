@@ -21,6 +21,15 @@ export function AuthProvider({ children }) {
     return data.user
   }
 
+  // Sprint 12: login express al perfil demo (sin pass).
+  const loginDemo = async () => {
+    const { data } = await api.post('/api/auth/demo-login')
+    localStorage.setItem('token', data.access_token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+    setUser(data.user)
+    return data.user
+  }
+
   const register = async (payload) => {
     const { data } = await api.post('/api/auth/register', payload)
     return data
@@ -42,7 +51,7 @@ export function AuthProvider({ children }) {
   const hasFinanzas = ['super_admin', 'admin_finanzas'].includes(user?.role)
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser, isAdmin, hasFinanzas }}>
+    <AuthContext.Provider value={{ user, loading, login, loginDemo, register, logout, refreshUser, isAdmin, hasFinanzas }}>
       {children}
     </AuthContext.Provider>
   )

@@ -39,6 +39,29 @@ def login(data: schemas.LoginIn, db: Session = Depends(get_db)):
     return schemas.Token(access_token=token, user=schemas.UserOut.model_validate(user))
 
 
+@router.post("/demo-login", response_model=schemas.Token)
+def demo_login(db: Session = Depends(get_db)):
+    """Login express al perfil demo (Sprint 12).
+
+    Busca/usa el usuario `demo@rca.com` con `is_demo=True`. No requiere pass.
+    El usuario verá SOLO datos demo (filas con is_demo=True) — la base "real"
+    queda intocada.
+    """
+    user = db.query(models.User).filter(
+        models.User.email == "demo@rca.com",
+        models.User.is_demo == True,  # noqa: E712
+    ).first()
+    if not user:
+        raise HTTPException(
+            503,
+            "Modo demo no configurado. Pedile al admin que corra el seed o cree el usuario demo.",
+        )
+    if not user.is_active:
+        raise HTTPException(403, "Usuario demo inactivo")
+    token = create_access_token({"sub": str(user.id), "role": user.role.value, "demo": True})
+    return schemas.Token(access_token=token, user=schemas.UserOut.model_validate(user))
+
+
 @router.get("/me", response_model=schemas.UserOut)
 def me(user: models.User = Depends(get_current_user)):
     return user

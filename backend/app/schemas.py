@@ -39,6 +39,8 @@ class UserOut(UserBase):
     # Sprint 11
     telegram_chat_id: Optional[str] = None
     telegram_username: Optional[str] = None
+    # Sprint 12
+    is_demo: bool = False
 
     class Config:
         from_attributes = True

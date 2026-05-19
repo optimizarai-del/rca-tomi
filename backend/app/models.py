@@ -211,6 +211,7 @@ class EventoTipo(str, Enum):
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     name = Column(String, nullable=False)
     last_name = Column(String)
     email = Column(String, unique=True, nullable=False, index=True)
@@ -251,6 +252,7 @@ class Cliente(Base):
     """Cliente final de las obras. Define el régimen fiscal por defecto."""
     __tablename__ = "clientes"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     nombre = Column(String(200), nullable=False, index=True)
     cuit = Column(String(13), index=True)
     razon_social = Column(String(200))
@@ -280,6 +282,7 @@ class Obra(Base):
     """
     __tablename__ = "obras"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     codigo = Column(String(20), unique=True, nullable=False)  # IDS, SP, CONST
     nombre = Column(String(200), nullable=False)
 
@@ -325,6 +328,7 @@ class EtapaObra(Base):
     """Divide la obra en etapas con monto contractual y cobro esperado."""
     __tablename__ = "etapas_obra"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
     nombre = Column(String(150), nullable=False)  # "Anticipo", "Etapa 1 - Estructura"
     nro_etapa = Column(Integer, nullable=False)  # 0 = anticipo, 1+ = sucesivas
@@ -350,6 +354,7 @@ class MovimientoObra(Base):
     """
     __tablename__ = "movimientos_obra"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False, index=True)
     etapa_id = Column(Integer, ForeignKey("etapas_obra.id"), index=True)  # NULL para egresos no atados a etapa
 
@@ -424,6 +429,7 @@ class Socio(Base):
     """
     __tablename__ = "socios"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     nombre = Column(String(150), nullable=False)
     apellido = Column(String(150))
     cuit = Column(String(13), index=True)
@@ -445,6 +451,7 @@ class AporteSocio(Base):
     """Préstamo interno de un socio (o RCA) a una obra. Obliga a reintegro."""
     __tablename__ = "aportes_socios"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
     socio_id = Column(Integer, ForeignKey("socios.id"), nullable=False)  # Sprint 7: FK a Socio propio
     etapa_reintegro_id = Column(Integer, ForeignKey("etapas_obra.id"))  # cuándo se prevé devolver
@@ -474,6 +481,7 @@ class AporteSocio(Base):
 class Comprobante(Base):
     __tablename__ = "comprobantes"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
     tipo_comprobante = Column(SQLEnum(TipoComprobante), nullable=False)
     punto_venta = Column(Integer)  # NULL si es comprobante recibido
@@ -531,6 +539,7 @@ class NotaObra(Base):
     """Notas y observaciones de obra (reemplaza columna de notas en hojas físicas)."""
     __tablename__ = "notas_obra"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False)
     movimiento_id = Column(Integer, ForeignKey("movimientos_obra.id"))  # opcional: nota sobre un mov específico
     texto = Column(Text, nullable=False)
@@ -550,6 +559,7 @@ class Frente(Base):
     """Sub-mapa operativo dentro de la obra (cimientos, terminaciones, etc.)."""
     __tablename__ = "frentes"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id"), nullable=False)
     nombre = Column(String, nullable=False)
     tipo = Column(String)
@@ -569,6 +579,7 @@ class Cuadrilla(Base):
     """Equipo operativo. Capa lúdica: stats RPG (XP/nivel/eficiencia)."""
     __tablename__ = "cuadrillas"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     nombre = Column(String, nullable=False)
     especialidad = Column(String)
     avatar = Column(String, default="👷")
@@ -590,6 +601,7 @@ class Material(Base):
     """Inventario de insumos (no es patrimonio — para herramientas ver herramientas_en_obra)."""
     __tablename__ = "materiales"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     nombre = Column(String, nullable=False)
     categoria = Column(String, index=True)
     unidad = Column(String, default="u")
@@ -675,6 +687,7 @@ class PresupuestoItem(Base):
 class Proveedor(Base):
     __tablename__ = "proveedores"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     nombre = Column(String, nullable=False)
     cuit = Column(String)
     telefono = Column(String)
@@ -693,6 +706,7 @@ class OrdenTrabajo(Base):
     """Quest operativa. Capa lúdica con XP reward."""
     __tablename__ = "ordenes_trabajo"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id"), nullable=False)
     frente_id = Column(Integer, ForeignKey("frentes.id"))
     cuadrilla_id = Column(Integer, ForeignKey("cuadrillas.id"))
@@ -714,6 +728,7 @@ class Evento(Base):
     """Actividad / log del feed."""
     __tablename__ = "eventos"
     id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
     obra_id = Column(Integer, ForeignKey("obras.id"))
     frente_id = Column(Integer, ForeignKey("frentes.id"))
     tipo = Column(SQLEnum(EventoTipo), default=EventoTipo.otro)

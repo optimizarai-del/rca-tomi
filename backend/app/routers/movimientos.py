@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin, require_finanzas
+from app.security import get_current_user, require_admin, require_finanzas, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/movimientos", tags=["movimientos"])
 

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user
+from app.security import get_current_user, scope_demo, stamp_demo
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
