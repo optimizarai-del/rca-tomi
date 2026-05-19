@@ -15,9 +15,10 @@ def list_aportes(
     obra_id: Optional[int] = None,
     pendientes_solo: bool = False,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.AporteSocio)
+    q = scope_demo(q, models.AporteSocio, user)
     if obra_id:
         q = q.filter(models.AporteSocio.obra_id == obra_id)
     if pendientes_solo:
@@ -108,7 +109,7 @@ def registrar_devolucion(
 
 
 @router.delete("/{aid}", status_code=204)
-def delete_aporte(aid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_aporte(aid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     aporte = db.query(models.AporteSocio).filter(models.AporteSocio.id == aid).first()
     if not aporte:
         raise HTTPException(404, "Aporte no encontrado")

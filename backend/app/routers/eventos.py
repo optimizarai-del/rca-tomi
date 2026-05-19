@@ -12,9 +12,10 @@ router = APIRouter(prefix="/api/eventos", tags=["eventos"])
 def list_eventos(
     obra_id: int = None,
     limit: int = Query(50, le=200),
-    db: Session = Depends(get_db), _: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db), user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.Evento)
+    q = scope_demo(q, models.Evento, user)
     if obra_id: q = q.filter(models.Evento.obra_id == obra_id)
     return q.order_by(models.Evento.fecha.desc()).limit(limit).all()
 

@@ -10,8 +10,9 @@ router = APIRouter(prefix="/api/ordenes", tags=["ordenes"])
 
 
 @router.get("", response_model=List[schemas.OrdenOut])
-def list_ordenes(obra_id: int = None, cuadrilla_id: int = None, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def list_ordenes(obra_id: int = None, cuadrilla_id: int = None, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     q = db.query(models.OrdenTrabajo)
+    q = scope_demo(q, models.OrdenTrabajo, user)
     if obra_id: q = q.filter(models.OrdenTrabajo.obra_id == obra_id)
     if cuadrilla_id: q = q.filter(models.OrdenTrabajo.cuadrilla_id == cuadrilla_id)
     return q.order_by(models.OrdenTrabajo.created_at.desc()).all()
@@ -42,7 +43,7 @@ def completar_orden(oid: int, db: Session = Depends(get_db), user: models.User =
 
 
 @router.patch("/{oid}/iniciar", response_model=schemas.OrdenOut)
-def iniciar_orden(oid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def iniciar_orden(oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     o = db.query(models.OrdenTrabajo).filter(models.OrdenTrabajo.id == oid).first()
     if not o: raise HTTPException(404, "Orden no encontrada")
     o.status = models.TaskStatus.en_progreso
@@ -51,7 +52,7 @@ def iniciar_orden(oid: int, db: Session = Depends(get_db), _: models.User = Depe
 
 
 @router.delete("/{oid}", status_code=204)
-def delete_orden(oid: int, db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
+def delete_orden(oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     o = db.query(models.OrdenTrabajo).filter(models.OrdenTrabajo.id == oid).first()
     if not o: raise HTTPException(404, "Orden no encontrada")
     db.delete(o); db.commit()

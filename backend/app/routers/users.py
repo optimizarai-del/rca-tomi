@@ -13,8 +13,8 @@ VINCULACION_TTL_MIN = 15  # el código del Telegram link expira en 15 minutos
 
 
 @router.get("", response_model=List[schemas.UserOut])
-def list_users(db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
-    return db.query(models.User).filter(models.User.is_active == True).all()
+def list_users(db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
+    return scope_demo(db.query(models.User), models.User, user).filter(models.User.is_active == True).all()
 
 
 @router.post("/invite", response_model=schemas.UserOut, status_code=201)
@@ -69,7 +69,7 @@ def deactivate(uid: int, db: Session = Depends(get_db), actor: models.User = Dep
 def telegram_generate_code(
     uid: int,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     """Genera un código de un solo uso para que el user mande /vincular <code> al bot.
 
@@ -96,7 +96,7 @@ def telegram_generate_code(
 def telegram_unlink(
     uid: int,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_admin),
+    user: models.User = Depends(require_admin),
 ):
     """Desvincula el chat de Telegram del usuario."""
     user = db.query(models.User).filter(models.User.id == uid).first()

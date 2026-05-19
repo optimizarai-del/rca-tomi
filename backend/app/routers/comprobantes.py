@@ -14,9 +14,10 @@ def list_comprobantes(
     obra_id: Optional[int] = None,
     es_venta: Optional[bool] = None,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_finanzas),
+    user: models.User = Depends(require_finanzas),
 ):
     q = db.query(models.Comprobante)
+    q = scope_demo(q, models.Comprobante, user)
     if obra_id:
         q = q.filter(models.Comprobante.obra_id == obra_id)
     if es_venta is not None:
@@ -28,7 +29,7 @@ def list_comprobantes(
 def create_comprobante(
     data: schemas.ComprobanteIn,
     db: Session = Depends(get_db),
-    _: models.User = Depends(require_finanzas),
+    user: models.User = Depends(require_finanzas),
 ):
     # Validación: total = neto_gravado + neto_no_gravado + iva_21 + iva_105
     suma = data.neto_gravado + data.neto_no_gravado + data.iva_21 + data.iva_105
@@ -40,7 +41,7 @@ def create_comprobante(
 
 
 @router.get("/{cid}", response_model=schemas.ComprobanteOut)
-def get_comprobante(cid: int, db: Session = Depends(get_db), _: models.User = Depends(require_finanzas)):
+def get_comprobante(cid: int, db: Session = Depends(get_db), user: models.User = Depends(require_finanzas)):
     c = db.query(models.Comprobante).filter(models.Comprobante.id == cid).first()
     if not c:
         raise HTTPException(404, "Comprobante no encontrado")
@@ -48,7 +49,7 @@ def get_comprobante(cid: int, db: Session = Depends(get_db), _: models.User = De
 
 
 @router.delete("/{cid}", status_code=204)
-def delete_comprobante(cid: int, db: Session = Depends(get_db), _: models.User = Depends(require_finanzas)):
+def delete_comprobante(cid: int, db: Session = Depends(get_db), user: models.User = Depends(require_finanzas)):
     c = db.query(models.Comprobante).filter(models.Comprobante.id == cid).first()
     if not c:
         raise HTTPException(404, "Comprobante no encontrado")

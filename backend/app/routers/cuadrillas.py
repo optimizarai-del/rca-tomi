@@ -9,19 +9,19 @@ router = APIRouter(prefix="/api/cuadrillas", tags=["cuadrillas"])
 
 
 @router.get("", response_model=List[schemas.CuadrillaOut])
-def list_cuadrillas(db: Session = Depends(get_db), _: models.User = Depends(get_current_user)):
-    return db.query(models.Cuadrilla).filter(models.Cuadrilla.activa == True).all()
+def list_cuadrillas(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    return scope_demo(db.query(models.Cuadrilla), models.Cuadrilla, user).filter(models.Cuadrilla.activa == True).all()
 
 
 @router.post("", response_model=schemas.CuadrillaOut, status_code=201)
-def create_cuadrilla(data: schemas.CuadrillaIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def create_cuadrilla(data: schemas.CuadrillaIn, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     c = models.Cuadrilla(**data.model_dump())
     db.add(c); db.commit(); db.refresh(c)
     return c
 
 
 @router.put("/{cid}", response_model=schemas.CuadrillaOut)
-def update_cuadrilla(cid: int, data: schemas.CuadrillaIn, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def update_cuadrilla(cid: int, data: schemas.CuadrillaIn, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     c = db.query(models.Cuadrilla).filter(models.Cuadrilla.id == cid).first()
     if not c: raise HTTPException(404, "Cuadrilla no encontrada")
     for k, v in data.model_dump().items():
@@ -31,7 +31,7 @@ def update_cuadrilla(cid: int, data: schemas.CuadrillaIn, db: Session = Depends(
 
 
 @router.delete("/{cid}", status_code=204)
-def delete_cuadrilla(cid: int, db: Session = Depends(get_db), _: models.User = Depends(require_admin)):
+def delete_cuadrilla(cid: int, db: Session = Depends(get_db), user: models.User = Depends(require_admin)):
     c = db.query(models.Cuadrilla).filter(models.Cuadrilla.id == cid).first()
     if not c: raise HTTPException(404, "Cuadrilla no encontrada")
     c.activa = False
