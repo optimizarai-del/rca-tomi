@@ -31,16 +31,51 @@ def set_demo_scope(value: Optional[bool]) -> None:
     _current_user_demo.set(value)
 
 
+def _models_with_is_demo():
+    """Devuelve {tablename: ModelClass} para todos los models con is_demo."""
+    from app import models as _m
+    out = {}
+    for name in dir(_m):
+        cls = getattr(_m, name)
+        if isinstance(cls, type) and hasattr(cls, "__tablename__") and hasattr(cls, "is_demo"):
+            out[cls.__tablename__] = cls
+    return out
+
+
 @event.listens_for(Query, "before_compile", retval=True)
 def _demo_scope_filter(query):  # pragma: no cover
-    """Inyecta filter is_demo en cualquier query sobre tablas con esa columna."""
+    """Inyecta filter is_demo en queries sobre tablas con esa columna.
+
+    Detecta entidades de 3 formas:
+    1) column_descriptions (queries tipo db.query(Model))
+    2) tablas en el FROM (queries con agregaciones: db.query(func.sum(Model.col)))
+    3) En ambos casos solo filtra si el modelo tiene is_demo.
+    """
     demo = _current_user_demo.get()
     if demo is None:
         return query
+
+    seen_classes = set()
+
+    # 1) Entities directas
     for column_desc in query.column_descriptions:
         entity = column_desc.get("entity")
         if entity is not None and hasattr(entity, "is_demo"):
-            query = query.filter(entity.is_demo == demo)
+            seen_classes.add(entity)
+
+    # 2) Tablas referenciadas (FROM clause)
+    table_map = _models_with_is_demo()
+    try:
+        # query.statement.froms contiene las tablas / joins de la query
+        for from_clause in query.statement.get_final_froms():
+            tname = getattr(from_clause, "name", None)
+            if tname in table_map:
+                seen_classes.add(table_map[tname])
+    except Exception:
+        pass
+
+    for cls in seen_classes:
+        query = query.filter(cls.is_demo == demo)
     return query
 
 
