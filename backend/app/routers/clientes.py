@@ -13,9 +13,10 @@ router = APIRouter(prefix="/api/clientes", tags=["clientes"])
 def list_clientes(
     activos_solo: bool = True,
     db: Session = Depends(get_db),
-    _: models.User = Depends(get_current_user),
+    user: models.User = Depends(get_current_user),
 ):
     q = db.query(models.Cliente)
+    q = scope_demo(q, models.Cliente, user)
     if activos_solo:
         q = q.filter(models.Cliente.activo == True)  # noqa: E712
     return q.order_by(models.Cliente.nombre).all()
