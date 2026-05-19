@@ -16,11 +16,13 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 9 | Stock multi-ubicación (depósito · en obras · pendiente retiro) | ✅ (suite 77/77) | [SPRINT_9_stock_multiubicacion.md](SPRINT_9_stock_multiubicacion.md) |
 | 10 | Presupuestos de materiales por obra | ✅ (suite 77/77) | [SPRINT_10_presupuestos_materiales.md](SPRINT_10_presupuestos_materiales.md) |
 | 11 | Bot de Telegram (texto) + vinculación de usuarios | ✅ (suite 90/90) | [SPRINT_11_telegram_bot.md](SPRINT_11_telegram_bot.md) |
+| 12 | Perfil demo dual (`is_demo` + scoping automático) | ✅ | — |
+| 20 | Deploy producción + dominio + handoff a Tomi | 🟡 en curso | [SPRINT_20_deploy_handoff.md](SPRINT_20_deploy_handoff.md) |
 
 ## Cómo seguir leyendo
 
 - Para entender **el panorama actual del proyecto**, leer primero [../GUIA_PROYECTO.md](../GUIA_PROYECTO.md).
-- Para ver **qué viene después**, leer [../PLAN_ACCION.md](../PLAN_ACCION.md) y [../ROADMAP.md](../ROADMAP.md).
+- Para ver **qué viene después**, leer [../PLAN_SPRINTS_13_20.md](../PLAN_SPRINTS_13_20.md) (vigente).
 - Para correrlo en una PC nueva, [../../SETUP.md](../../SETUP.md).
 
 ## Convenciones de los documentos
