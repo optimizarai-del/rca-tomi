@@ -19,13 +19,16 @@ Guía para levantar RCA en un VPS con [Easy Panel](https://easypanel.io). El sta
                 │   - agente IA           │
                 │   - bots WhatsApp/TG    │
                 └────────────┬────────────┘
-                             ▼
+                             ▼ (DATABASE_URL)
                 ┌─────────────────────────┐
-                │   db (Postgres 16)      │  ← volumen persistente
+                │   Supabase Postgres     │  ← managed, fuera del compose
+                │   (Session pooler)      │
                 └─────────────────────────┘
 ```
 
 **Un solo dominio** sirve todo. El nginx del frontend hace `proxy_pass /api → backend:8010` interno — no hay CORS que configurar, no se exponen puertos del backend a internet.
+
+**DB externa**: la base es Postgres en [Supabase](https://supabase.com) (managed). El compose **no levanta** un container `db`. Tomi se conecta via Session pooler (URL con `pooler.supabase.com:5432`).
 
 ---
 
@@ -33,6 +36,10 @@ Guía para levantar RCA en un VPS con [Easy Panel](https://easypanel.io). El sta
 
 - Una VPS con Easy Panel ya instalado.
 - Un dominio o subdominio apuntando a tu VPS (ej. `rca.tudominio.com`).
+- Un proyecto en **[Supabase](https://supabase.com)** (free tier alcanza para arrancar). Tener a mano:
+  - `Project URL` y `Project Ref` (en *Settings → API*).
+  - Password de la DB (la pediste al crear el proyecto).
+  - Connection string del **Session pooler** (en *Settings → Database → Connection pooling*).
 - Una **API key de Anthropic** (https://console.anthropic.com/settings/keys).
 - (Opcional) Bot tokens de WhatsApp/Telegram si vas a usar esas integraciones.
 
@@ -56,11 +63,10 @@ Guía para levantar RCA en un VPS con [Easy Panel](https://easypanel.io). El sta
 En el servicio Compose, **Environment** → pegá lo siguiente y completá los valores marcados:
 
 ```env
-# ── DB ───────────────────────────────────────────────────────────
-POSTGRES_USER=rca
-POSTGRES_PASSWORD=PONÉ-UNA-PASS-LARGA-RANDOM-AQUI
-POSTGRES_DB=rca
-DATABASE_URL=postgresql+psycopg://rca:PONÉ-UNA-PASS-LARGA-RANDOM-AQUI@db:5432/rca
+# ── DB: Supabase Postgres (Session pooler) ──────────────────────
+# Reemplazá PROJREF, REGION y PASS con los datos de tu proyecto Supabase.
+# Importante: usar +psycopg en el scheme (no postgresql://).
+DATABASE_URL=postgresql+psycopg://postgres.PROJREF:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres
 
 # ── Auth ─────────────────────────────────────────────────────────
 SECRET_KEY=GENERA-UN-STRING-LARGO-RANDOM-DE-48-CHARS-O-MÁS
@@ -110,11 +116,12 @@ Tocá **Deploy** en Easy Panel. La primera vez va a:
 
 1. Clonar el repo.
 2. Construir imágenes (`frontend` ~3 min, `backend` ~2 min).
-3. Levantar `db`.
-4. Backend corre `alembic upgrade head` automáticamente y arranca uvicorn.
-5. Frontend nginx queda listo.
+3. Backend conecta a Supabase (sin esperar levantar DB local), corre `alembic upgrade head` automáticamente y arranca uvicorn.
+4. Frontend nginx queda listo.
 
 Mirá los **Logs** del servicio compose para ver el progreso. Cuando el backend imprime `Uvicorn running on http://0.0.0.0:8010`, estás listo.
+
+> **Si Alembic falla** con `connection refused` o `password authentication failed`: revisá el `DATABASE_URL`. Para Supabase es `postgresql+psycopg://postgres.PROJREF:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres` (no `postgresql://`, va `+psycopg`).
 
 ---
 
@@ -153,16 +160,21 @@ Checks:
 
 ## 8. Backups
 
-Easy Panel tiene backup integrado para volúmenes Docker. En el servicio compose → **Backups** → schedule diario del volumen `rca_pgdata`.
+Como la DB está en Supabase (managed), los backups los maneja Supabase:
 
-Para restaurar manualmente desde la consola del contenedor:
+- **Free tier**: backups diarios automáticos retenidos 7 días (Supabase dashboard → *Database → Backups*).
+- **Pro tier**: PITR (point-in-time recovery) hasta 7 días.
+
+Para un dump manual (ej. antes de un cambio de schema riesgoso) desde tu máquina:
 
 ```bash
-# Dump
-pg_dump -U rca -d rca > /tmp/rca-$(date +%F).sql
+# Necesita psql client local
+pg_dump "postgresql://postgres.PROJREF:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres" > rca-$(date +%F).sql
+```
 
-# Restore (en otro server / mismo volumen vacío)
-psql -U rca -d rca < /tmp/rca-2026-05-17.sql
+Para restaurar a otro proyecto Supabase:
+```bash
+psql "postgresql://postgres.NUEVO_PROJREF:PASS@..." < rca-2026-05-17.sql
 ```
 
 ---
@@ -205,7 +217,7 @@ con el `WHATSAPP_WEBHOOK_TOKEN` que pusiste en las vars.
 | Frontend abre pero `/api/*` da 502 | El backend no arrancó. Mirá logs del container `rca_backend` — suele ser Alembic con DB no lista (esperá 30s más) o `ANTHROPIC_API_KEY` faltante. |
 | Login da CORS error | Estás llamando al backend desde otro dominio. Configurá `CORS_ORIGINS` con tu dominio explícito en vez de `*`. |
 | El agente IA dice "no configurado" | Falta `ANTHROPIC_API_KEY` o quedó vacío en las env vars del compose. Redeploy después de setearlo. |
-| Alembic falla con "FATAL: database does not exist" | El servicio `db` todavía no está listo. Easy Panel debería respetar el `depends_on healthy` — esperá y rehacé deploy. |
+| Alembic falla con "FATAL: database does not exist" / "password authentication failed" | `DATABASE_URL` mal armada. Para Supabase usá Session pooler con `+psycopg`: `postgresql+psycopg://postgres.PROJREF:PASS@aws-0-REGION.pooler.supabase.com:5432/postgres`. |
 | Cambié variables pero no se aplican | El backend necesita restart del container. Tocá **Restart** en el servicio compose, no rebuild. |
 | Quiero exponer el backend en otro subdominio | Edita `docker-compose.yml`, descomentá `ports: 8010:8010` en `backend`, y agregá un Domain en Easy Panel apuntando al servicio backend. |
 
@@ -233,6 +245,6 @@ Para volver a una versión anterior:
 |----------|---------------|---------------|------------------|
 | `frontend` | 80 | proxy de Easy Panel | ✅ `rca.tudominio.com` |
 | `backend` | 8010 | — | ❌ (solo accesible vía `/api/*` del frontend) |
-| `db` | 5432 | — | ❌ (solo accesible desde backend) |
+| (DB) | — | — | Supabase managed, fuera del VPS |
 
 Eso es todo. Si algo no anda, pasame el log del container y lo debugeamos.
