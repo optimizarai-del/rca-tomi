@@ -1,4 +1,12 @@
-# Plan — Sprints 9 a 13
+# Plan — Sprints 9 a 13 (HISTÓRICO)
+
+> ⚠️ **Plan archivado.** Vigente: [PLAN_SPRINTS_13_20.md](PLAN_SPRINTS_13_20.md).
+>
+> Este plan se desvió en ejecución: S11 terminó siendo "Telegram bot" (no "cotizaciones"), S12 fue "perfil demo dual" (no "mano de obra"), y la reunión 2026-05-19 sumó scope nuevo (permisos granulares, recetas, requerimientos, contabilidad blanco/negro).
+>
+> Se conserva como referencia histórica del razonamiento inicial.
+
+---
 
 Plan de evolución a partir de notas de reunión del 2026-05-13. Premisa central:
 **TODA la carga de datos operativa va por mensajes al bot de WhatsApp**.
