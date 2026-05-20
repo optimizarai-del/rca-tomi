@@ -54,7 +54,7 @@ export default function Finanzas() {
     <div className="max-w-7xl mx-auto animate-fade-in">
       <header className="mb-12">
         <div className="hero-eyebrow">Finanzas</div>
-        <h1 className="hero-title text-5xl md:text-6xl mb-3">Flujo de caja.</h1>
+        <h1 className="hero-title text-5xl md:text-6xl mb-3">Flujo de caja</h1>
         <p className="hero-sub">Control financiero por obra: ingresos, egresos, aportes y cheques.</p>
       </header>
 

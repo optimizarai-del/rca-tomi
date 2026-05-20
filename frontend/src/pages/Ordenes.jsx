@@ -30,7 +30,7 @@ export default function Ordenes() {
         <div className="hero-eyebrow">Operaciones</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Órdenes.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Órdenes</h1>
             <p className="hero-sub">Tareas activas en todas tus obras.</p>
           </div>
           <select className="input max-w-xs !rounded-full" value={filtroObra} onChange={e=>setFiltroObra(e.target.value)}>

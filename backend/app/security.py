@@ -89,6 +89,8 @@ _DEMO_TABLES = {
     "socios", "aportes_socios", "comprobantes", "notas_obra",
     "frentes", "cuadrillas", "materiales", "proveedores",
     "ordenes_trabajo", "eventos",
+    "requerimientos",  # Sprint 17
+    "retiros_material",  # Sprint 14
 }
 
 
@@ -228,6 +230,65 @@ def stamp_demo(obj, user: "models.User"):
     if hasattr(obj, "is_demo"):
         obj.is_demo = bool(user.is_demo)
     return obj
+
+
+# ─── Sprint 13: permisos granulares por seccion y por obra ──────────
+# ADMIN_ROLES siempre pasan (bypass anti-lockout). Para otros roles:
+# - sin filas en permisos_usuario → todas las secciones permitidas.
+# - con fila allowed=False → bloqueada esa seccion.
+# - sin filas en permisos_usuario_obra → ve todas las obras.
+# - con filas → ve solo esas obras (whitelist).
+
+def user_section_allowed(db: Session, user: "models.User", seccion: str) -> bool:
+    if user.role in ADMIN_ROLES:
+        return True
+    row = (
+        db.query(models.PermisoUsuario)
+        .filter(
+            models.PermisoUsuario.user_id == user.id,
+            models.PermisoUsuario.seccion == seccion,
+        )
+        .first()
+    )
+    if row is None:
+        return True
+    return bool(row.allowed)
+
+
+def user_visible_obra_ids(db: Session, user: "models.User") -> Optional[list[int]]:
+    """Devuelve la lista de obra_ids visibles, o None si ve todas (sin restriccion)."""
+    if user.role in ADMIN_ROLES:
+        return None
+    rows = (
+        db.query(models.PermisoUsuarioObra.obra_id)
+        .filter(models.PermisoUsuarioObra.user_id == user.id)
+        .all()
+    )
+    if not rows:
+        return None
+    return [r[0] for r in rows]
+
+
+def scope_obras(query, model_obra, db: Session, user: "models.User"):
+    """Aplica filtro de whitelist de obras si corresponde. No-op para admins."""
+    ids = user_visible_obra_ids(db, user)
+    if ids is None:
+        return query
+    return query.filter(model_obra.id.in_(ids))
+
+
+def require_section(seccion: str):
+    """Dependency factory: gatea un router/endpoint por seccion."""
+
+    def _dep(
+        db: Session = Depends(get_db),
+        user: models.User = Depends(get_current_user),
+    ) -> models.User:
+        if not user_section_allowed(db, user, seccion):
+            raise HTTPException(403, f"Sin permiso para la seccion '{seccion}'")
+        return user
+
+    return _dep
 
 
 def require_role(*allowed_roles: models.UserRole):

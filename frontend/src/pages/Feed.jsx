@@ -21,7 +21,7 @@ export default function Feed() {
     <div className="max-w-3xl mx-auto animate-fade-in">
       <header className="mb-12">
         <div className="hero-eyebrow">Tiempo real</div>
-        <h1 className="hero-title text-5xl md:text-6xl mb-3">Actividad.</h1>
+        <h1 className="hero-title text-5xl md:text-6xl mb-3">Actividad</h1>
         <p className="hero-sub">Cronología de todo lo que pasa en tus obras.</p>
       </header>
 

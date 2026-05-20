@@ -19,7 +19,7 @@ export default function Proveedores() {
         <div className="hero-eyebrow">Red de aliados</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Proveedores.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Proveedores</h1>
             <p className="hero-sub">Tu red de confianza, evaluada y siempre disponible.</p>
           </div>
           <button onClick={()=>setOpen(true)} className="btn-primary"><Plus size={14}/> Nuevo proveedor</button>

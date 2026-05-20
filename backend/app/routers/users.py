@@ -5,7 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app import models, schemas
 from app.database import get_db
-from app.security import require_admin, hash_password, scope_demo, stamp_demo
+from app.security import (
+    get_current_user,
+    require_admin,
+    hash_password,
+    scope_demo,
+    stamp_demo,
+)
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -107,3 +113,101 @@ def telegram_unlink(
     user.telegram_vinculacion_code = None
     user.telegram_vinculacion_exp = None
     db.commit()
+
+
+# ─── Sprint 13 — Permisos granulares por seccion + obras visibles ────────
+# IMPORTANTE: /me/permisos va ANTES que /{uid}/permisos porque FastAPI
+# matchea por orden y "me" no es un int.
+
+
+def _build_permisos(uid: int, db: Session) -> schemas.PermisosOut:
+    rows = (
+        db.query(models.PermisoUsuario)
+        .filter(models.PermisoUsuario.user_id == uid)
+        .all()
+    )
+    bloqueadas = {r.seccion for r in rows if not r.allowed}
+    catalogo = list(models.SECCIONES)
+    permitidas = [s for s in catalogo if s not in bloqueadas]
+
+    obras_rows = (
+        db.query(models.PermisoUsuarioObra.obra_id)
+        .filter(models.PermisoUsuarioObra.user_id == uid)
+        .all()
+    )
+    obras_ids = [r[0] for r in obras_rows] if obras_rows else None
+
+    return schemas.PermisosOut(
+        user_id=uid,
+        secciones_permitidas=permitidas,
+        secciones_bloqueadas=sorted(bloqueadas),
+        obras_visibles_ids=obras_ids,
+        secciones_catalogo=catalogo,
+    )
+
+
+@router.get("/me/permisos", response_model=schemas.PermisosOut)
+def my_permisos(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Cualquier user logueado consulta sus propios permisos."""
+    return _build_permisos(uid=user.id, db=db)
+
+
+@router.get("/{uid}/permisos", response_model=schemas.PermisosOut)
+def get_permisos(
+    uid: int,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    target = db.query(models.User).filter(models.User.id == uid).first()
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+    return _build_permisos(uid=uid, db=db)
+
+
+@router.put("/{uid}/permisos", response_model=schemas.PermisosOut)
+def set_permisos(
+    uid: int,
+    data: schemas.PermisosIn,
+    db: Session = Depends(get_db),
+    _: models.User = Depends(require_admin),
+):
+    target = db.query(models.User).filter(models.User.id == uid).first()
+    if not target:
+        raise HTTPException(404, "Usuario no encontrado")
+
+    catalogo = set(models.SECCIONES)
+
+    if data.secciones_permitidas is not None:
+        invalid = [s for s in data.secciones_permitidas if s not in catalogo]
+        if invalid:
+            raise HTTPException(400, f"Secciones inexistentes: {invalid}")
+        permitidas = set(data.secciones_permitidas)
+        bloqueadas = catalogo - permitidas
+        db.query(models.PermisoUsuario).filter(
+            models.PermisoUsuario.user_id == uid
+        ).delete()
+        for sec in bloqueadas:
+            db.add(models.PermisoUsuario(user_id=uid, seccion=sec, allowed=False))
+
+    if data.obras_visibles_ids is not None:
+        db.query(models.PermisoUsuarioObra).filter(
+            models.PermisoUsuarioObra.user_id == uid
+        ).delete()
+        if data.obras_visibles_ids:
+            obras_validas = {
+                o[0]
+                for o in db.query(models.Obra.id)
+                .filter(models.Obra.id.in_(data.obras_visibles_ids))
+                .all()
+            }
+            faltantes = set(data.obras_visibles_ids) - obras_validas
+            if faltantes:
+                raise HTTPException(400, f"Obras inexistentes: {sorted(faltantes)}")
+            for oid in data.obras_visibles_ids:
+                db.add(models.PermisoUsuarioObra(user_id=uid, obra_id=oid))
+
+    db.commit()
+    return _build_permisos(uid=uid, db=db)

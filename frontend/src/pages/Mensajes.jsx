@@ -70,7 +70,7 @@ export default function Mensajes() {
       <header className="mb-10 flex items-end justify-between gap-6 flex-wrap">
         <div>
           <div className="hero-eyebrow">Administración</div>
-          <h1 className="hero-title text-5xl md:text-6xl mb-3">Mensajes.</h1>
+          <h1 className="hero-title text-5xl md:text-6xl mb-3">Mensajes</h1>
           <p className="hero-sub">Log de WhatsApp salientes (notificaciones, respuestas a slash commands, mensajes del agente IA).</p>
         </div>
         <div className="flex gap-2">

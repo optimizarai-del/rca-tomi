@@ -21,7 +21,7 @@ export default function Cuadrillas() {
         <div className="hero-eyebrow">Recursos humanos</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Cuadrillas.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Cuadrillas</h1>
             <p className="hero-sub">Equipos de trabajo organizados por especialidad.</p>
           </div>
           <button onClick={()=>setOpen(true)} className="btn-primary"><Plus size={14}/> Nueva cuadrilla</button>
