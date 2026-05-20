@@ -640,6 +640,45 @@ class ProveedorOut(ProveedorIn):
         from_attributes = True
 
 
+# ─── Sprint 15: detalle del proveedor (materiales que vende + historial) ────
+
+
+class ProveedorMaterialOut(BaseModel):
+    """Material que un proveedor vende (resuelto desde Material.proveedor_id)."""
+    material_id: int
+    nombre: str
+    categoria: Optional[str] = None
+    unidad: str
+    precio_unitario: float
+    stock_actual: float = 0  # sum(deposito + en_obras)
+    pendiente_retiro: float = 0  # comprado_no_retirado para este proveedor
+
+
+class ProveedorHistorialItem(BaseModel):
+    """Item del historial del proveedor: una compra retirada (facturado) o un item
+    en un presupuesto (presupuestado).
+    """
+    fecha: date
+    tipo: str  # 'facturado' | 'presupuestado'
+    material_id: int
+    material_nombre: str
+    unidad: str
+    cantidad: float
+    precio_unitario: Optional[float] = None
+    subtotal: Optional[float] = None
+    en_negro: Optional[bool] = None  # solo aplica a facturado
+    forma_pago: Optional[MedioPago] = None  # solo facturado
+    obra_destino_nombre: Optional[str] = None  # solo facturado, si fue directo a obra
+    presupuesto_nombre: Optional[str] = None  # solo presupuestado
+    presupuesto_estado: Optional[str] = None  # solo presupuestado
+    ref_id: int  # id del RetiroMaterial o PresupuestoItem
+
+
+class ProveedorDetalleOut(ProveedorOut):
+    materiales_vendidos: List[ProveedorMaterialOut] = []
+    ultima_actividad: Optional[date] = None  # max(fecha facturado/presupuestado)
+
+
 class OrdenIn(BaseModel):
     obra_id: int
     frente_id: Optional[int] = None
