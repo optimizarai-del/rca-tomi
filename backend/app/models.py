@@ -796,11 +796,40 @@ class AgentAction(Base):
 # filtra ni aunque tenga filas (defensa contra lockout).
 
 SECCIONES = (
-    "obras", "ordenes", "feed",
+    "obras", "ordenes", "feed", "requerimientos",
     "cuadrillas", "materiales", "presupuestos", "proveedores",
     "finanzas", "movimientos", "aportes", "comprobantes", "clientes", "socios",
     "equipo", "mensajes",
 )
+
+
+class RequerimientoEstado(str, Enum):
+    """Sprint 17."""
+    abierto = "abierto"
+    resuelto = "resuelto"
+
+
+class Requerimiento(Base):
+    """Sprint 17 — Imprevisto/pedido reportado por bot o web sobre una obra.
+
+    Carga rápida cuando pasa algo en la obra (sin formulario largo): el bot manda
+    `/req <obra> <texto libre>` y queda anotado. Después se marca resuelto.
+    """
+    __tablename__ = "requerimientos"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False, index=True)
+    mensaje = Column(Text, nullable=False)
+    estado = Column(SQLEnum(RequerimientoEstado), default=RequerimientoEstado.abierto, nullable=False, index=True)
+    canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web, nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    resuelto_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    resuelto_at = Column(DateTime)
+
+    obra = relationship("Obra")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    resuelto_by = relationship("User", foreign_keys=[resuelto_by_id])
 
 
 class PermisoUsuario(Base):

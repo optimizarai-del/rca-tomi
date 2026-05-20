@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, MapPin, Users, Package, Activity, AlertCircle,
   Calendar, DollarSign, Plus, Check, Clock, ArrowRight, X, Loader2, Layers,
+  MessageCircle, RotateCcw, Trash2,
 } from 'lucide-react'
 import api from '../utils/api'
 
@@ -138,6 +139,7 @@ export default function ObraDetail() {
             { v: 'frentes', l: `Frentes` },
             { v: 'ordenes', l: `Órdenes` },
             { v: 'eventos', l: `Actividad` },
+            { v: 'requerimientos', l: `Requerimientos` },
           ].map(t => (
             <button key={t.v} onClick={()=>setTab(t.v)}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition whitespace-nowrap ${
@@ -156,6 +158,7 @@ export default function ObraDetail() {
         {tab === 'frentes' && <FrentesTab frentes={frentes} obraId={id} reload={load}/>}
         {tab === 'ordenes' && <OrdenesTab ordenes={ordenes} obraId={id} reload={load}/>}
         {tab === 'eventos' && <EventosTab eventos={eventos} obraId={id} reload={load}/>}
+        {tab === 'requerimientos' && <RequerimientosTab obraId={id} obraCodigo={obra?.codigo}/>}
       </div>
     </div>
   )
@@ -997,6 +1000,162 @@ function Modal({ children, onClose }) {
       <div onClick={e=>e.stopPropagation()} className="card w-full max-w-md p-8 shadow-lift animate-scale-in">
         {children}
       </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Requerimientos tab (Sprint 17)
+function RequerimientosTab({ obraId, obraCodigo }) {
+  const [list, setList] = useState([])
+  const [filtro, setFiltro] = useState('todos')  // todos | abierto | resuelto
+  const [nuevo, setNuevo] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const r = await api.get(`/api/obras/${obraId}/requerimientos`)
+      setList(r.data)
+    } finally {
+      setLoading(false)
+    }
+  }
+  useEffect(() => { load() }, [obraId])
+
+  const crear = async (e) => {
+    e.preventDefault()
+    if (!nuevo.trim()) return
+    setEnviando(true)
+    try {
+      await api.post('/api/requerimientos', { obra_id: Number(obraId), mensaje: nuevo.trim() })
+      setNuevo('')
+      load()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al crear')
+    } finally {
+      setEnviando(false)
+    }
+  }
+  const resolver = async (rid) => {
+    await api.patch(`/api/requerimientos/${rid}/resolver`)
+    load()
+  }
+  const reabrir = async (rid) => {
+    await api.patch(`/api/requerimientos/${rid}/reabrir`)
+    load()
+  }
+  const eliminar = async (rid) => {
+    if (!confirm('¿Eliminar requerimiento?')) return
+    await api.delete(`/api/requerimientos/${rid}`)
+    load()
+  }
+
+  const filtrados = list.filter(r => filtro === 'todos' || r.estado === filtro)
+  const abiertos = list.filter(r => r.estado === 'abierto').length
+  const resueltos = list.length - abiertos
+
+  return (
+    <div className="space-y-6">
+      <div className="grid md:grid-cols-3 gap-4">
+        <Stat label="Abiertos" value={abiertos} accent="text-leather" />
+        <Stat label="Resueltos" value={resueltos} accent="text-olive" />
+        <Stat label="Total" value={list.length} />
+      </div>
+
+      <form onSubmit={crear} className="card p-5">
+        <div className="text-xs text-muted mb-2">
+          Anotá un imprevisto o pedido sobre <strong>{obraCodigo}</strong>. También se puede mandar
+          por Telegram con <code className="bg-bone-200 px-1 rounded">/req {obraCodigo} &lt;mensaje&gt;</code>.
+        </div>
+        <div className="flex gap-2">
+          <input
+            className="input flex-1"
+            placeholder="Ej: falta cemento, mando 5 bolsas mañana"
+            value={nuevo}
+            onChange={e => setNuevo(e.target.value)}
+          />
+          <button className="btn-primary" disabled={enviando || !nuevo.trim()}>
+            <Plus size={14} /> {enviando ? 'Anotando…' : 'Anotar'}
+          </button>
+        </div>
+      </form>
+
+      <div className="flex gap-2 text-xs">
+        {['todos', 'abierto', 'resuelto'].map(f => (
+          <button
+            key={f}
+            onClick={() => setFiltro(f)}
+            className={`px-3 py-1.5 rounded-full border transition ${
+              filtro === f ? 'bg-navy text-bone border-navy' : 'border-border text-muted hover:text-navy'
+            }`}
+          >
+            {f}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="text-muted text-sm">Cargando…</div>}
+      {!loading && filtrados.length === 0 && (
+        <div className="text-muted text-sm py-8 text-center border border-dashed border-border rounded-xl">
+          No hay requerimientos {filtro !== 'todos' ? `en estado "${filtro}"` : ''} todavía.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {filtrados.map(r => (
+          <div key={r.id} className={`card p-4 flex items-start gap-3 ${
+            r.estado === 'resuelto' ? 'opacity-60' : ''
+          }`}>
+            <div className={`mt-1 w-2 h-2 rounded-full shrink-0 ${
+              r.estado === 'abierto' ? 'bg-leather' : 'bg-olive'
+            }`}/>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm whitespace-pre-wrap break-words">{r.mensaje}</div>
+              <div className="text-[11px] text-muted mt-1.5 flex items-center gap-2 flex-wrap">
+                <span>#{r.id}</span>
+                <span>·</span>
+                <span>{new Date(r.created_at).toLocaleString()}</span>
+                <span>·</span>
+                <span className={r.canal === 'whatsapp' ? 'flex items-center gap-1' : ''}>
+                  {r.canal === 'whatsapp' && <MessageCircle size={10}/>}
+                  {r.canal}
+                </span>
+                {r.resuelto_at && (
+                  <>
+                    <span>·</span>
+                    <span className="text-olive">resuelto {new Date(r.resuelto_at).toLocaleString()}</span>
+                  </>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {r.estado === 'abierto' ? (
+                <button onClick={()=>resolver(r.id)} className="btn-ghost text-xs" title="Marcar resuelto">
+                  <Check size={12}/> Resolver
+                </button>
+              ) : (
+                <button onClick={()=>reabrir(r.id)} className="btn-ghost text-xs" title="Reabrir">
+                  <RotateCcw size={12}/> Reabrir
+                </button>
+              )}
+              <button onClick={()=>eliminar(r.id)} className="text-muted/60 hover:text-danger p-2">
+                <Trash2 size={12}/>
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Stat({ label, value, accent }) {
+  return (
+    <div className="card p-4">
+      <div className="text-[10px] tracking-[0.18em] uppercase text-muted font-semibold mb-1">{label}</div>
+      <div className={`hero-title text-3xl ${accent || ''}`}>{value}</div>
     </div>
   )
 }

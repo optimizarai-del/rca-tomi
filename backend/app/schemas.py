@@ -8,6 +8,7 @@ from app.models import (
     TipoFacturacion, EtapaEstado, TipoMovimiento, OrigenIngreso,
     CategoriaEgreso, MedioPago, EstadoMovimiento, EstadoDevolucion,
     TipoComprobante, EstadoFiscal, TipoRetencion,
+    RequerimientoEstado,
 )
 
 
@@ -668,6 +669,30 @@ class HudGlobal(BaseModel):
     materiales_criticos: int
     productividad: float
     alertas_total: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# REQUERIMIENTOS POR OBRA (Sprint 17)
+# ════════════════════════════════════════════════════════════════════
+
+class RequerimientoIn(BaseModel):
+    obra_id: int
+    mensaje: str = Field(min_length=1, max_length=2000)
+
+
+class RequerimientoOut(BaseModel):
+    id: int
+    obra_id: int
+    mensaje: str
+    estado: RequerimientoEstado
+    canal: CanalCarga
+    created_by_id: Optional[int] = None
+    resuelto_by_id: Optional[int] = None
+    created_at: datetime
+    resuelto_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
 
 
 # ════════════════════════════════════════════════════════════════════

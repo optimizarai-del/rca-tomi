@@ -89,6 +89,7 @@ _DEMO_TABLES = {
     "socios", "aportes_socios", "comprobantes", "notas_obra",
     "frentes", "cuadrillas", "materiales", "proveedores",
     "ordenes_trabajo", "eventos",
+    "requerimientos",  # Sprint 17
 }
 
 

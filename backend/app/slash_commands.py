@@ -28,6 +28,7 @@ HELP = (
     "/avance <obra> <%>      - actualiza progreso\n"
     "/gasto <obra> <monto> <concepto>  - registra egreso\n"
     "/stock [material]       - stock multi-ubicación (Sprint 9)\n"
+    "/req <obra> <mensaje>   - anota requerimiento/imprevisto (Sprint 17)\n"
     "/help                   - este menú"
 )
 
@@ -101,6 +102,8 @@ def handle_slash(text: str, user: models.User, db: Session) -> dict:
         return _cmd_gasto(args, user, db)
     if cmd == "stock":
         return _cmd_stock(args, db)
+    if cmd == "req":
+        return _cmd_req(args, user, db)
 
     return {
         "ok": False,
@@ -283,6 +286,48 @@ def _cmd_gasto(args: list[str], user: models.User, db: Session) -> dict:
         ),
         "movimiento_id": mov.id,
         "saldo_obra": s["saldo"],
+    }
+
+
+def _cmd_req(args: list[str], user: models.User, db: Session) -> dict:
+    """Sprint 17 — /req <obra> <mensaje libre>
+
+    Anota un requerimiento/imprevisto contra una obra. Queda en estado `abierto`
+    hasta que alguien lo marque resuelto desde la web.
+    """
+    if len(args) < 2:
+        return {"ok": False, "reply": "Uso: /req <obra> <mensaje>\nEj: /req IDS falta cemento, mando 5 bolsas"}
+    obra_ref = args[0]
+    mensaje = " ".join(args[1:]).strip()
+    if not mensaje:
+        return {"ok": False, "reply": "❌ Falta el mensaje del requerimiento."}
+
+    obra = _obra_by_ref(obra_ref, db)
+    if not obra:
+        return {"ok": False, "reply": f"❌ Obra '{obra_ref}' no encontrada."}
+
+    r = models.Requerimiento(
+        obra_id=obra.id,
+        mensaje=mensaje,
+        estado=models.RequerimientoEstado.abierto,
+        canal=models.CanalCarga.whatsapp,
+        created_by_id=user.id,
+        is_demo=bool(getattr(user, "is_demo", False)),
+    )
+    db.add(r); db.commit(); db.refresh(r)
+    user.xp = (user.xp or 0) + 3
+    db.commit()
+
+    return {
+        "ok": True,
+        "reply": (
+            f"📝 Requerimiento anotado en {obra.codigo}\n"
+            f"#{r.id} · {mensaje[:80]}{'…' if len(mensaje) > 80 else ''}\n"
+            f"Estado: abierto. Marcalo resuelto cuando se accione.\n"
+            f"+3 XP (total: {user.xp})"
+        ),
+        "requerimiento_id": r.id,
+        "obra_id": obra.id,
     }
 
 

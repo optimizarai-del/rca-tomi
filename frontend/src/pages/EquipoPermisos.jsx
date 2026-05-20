@@ -7,6 +7,7 @@ const SECCION_LABELS = {
   obras: 'Obras',
   ordenes: 'Órdenes',
   feed: 'Actividad',
+  requerimientos: 'Requerimientos',
   cuadrillas: 'Cuadrillas',
   materiales: 'Materiales',
   presupuestos: 'Presupuestos',
@@ -22,7 +23,7 @@ const SECCION_LABELS = {
 }
 
 const GRUPOS = {
-  General: ['obras', 'ordenes', 'feed'],
+  General: ['obras', 'ordenes', 'feed', 'requerimientos'],
   Recursos: ['cuadrillas', 'materiales', 'presupuestos', 'proveedores'],
   Finanzas: ['finanzas', 'movimientos', 'aportes', 'comprobantes', 'clientes', 'socios'],
   Administración: ['equipo', 'mensajes'],
