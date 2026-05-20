@@ -19,11 +19,14 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 13 | UI cleanup + permisos granulares (secciones + obras) | ✅ (suite 103/103) | [SPRINT_13_ui_permisos.md](SPRINT_13_ui_permisos.md) |
 | 14 | Stock: estados pedido/retirar/retirado + alertas + foto factura | ✅ (suite 133/133) | [SPRINT_14_stock_retiros.md](SPRINT_14_stock_retiros.md) |
 | 17 | Requerimientos por obra (bot + web) | ✅ (suite 115/115) | [SPRINT_17_requerimientos.md](SPRINT_17_requerimientos.md) |
+| 12 | Perfil demo dual (`is_demo` + scoping automático) | ✅ | — |
+| 20 | Deploy producción + dominio + handoff a Tomi | 🟡 en curso | [SPRINT_20_deploy_handoff.md](SPRINT_20_deploy_handoff.md) |
+
 
 ## Cómo seguir leyendo
 
 - Para entender **el panorama actual del proyecto**, leer primero [../GUIA_PROYECTO.md](../GUIA_PROYECTO.md).
-- Para ver **qué viene después**, leer [../PLAN_ACCION.md](../PLAN_ACCION.md) y [../ROADMAP.md](../ROADMAP.md).
+- Para ver **qué viene después**, leer [../PLAN_SPRINTS_13_20.md](../PLAN_SPRINTS_13_20.md) (vigente).
 - Para correrlo en una PC nueva, [../../SETUP.md](../../SETUP.md).
 
 ## Convenciones de los documentos
