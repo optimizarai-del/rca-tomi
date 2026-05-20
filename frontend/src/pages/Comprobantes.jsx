@@ -73,7 +73,7 @@ export default function Comprobantes() {
       <header className="mb-10 flex items-end justify-between gap-6 flex-wrap">
         <div>
           <div className="hero-eyebrow">Finanzas</div>
-          <h1 className="hero-title text-5xl md:text-6xl mb-3">Comprobantes.</h1>
+          <h1 className="hero-title text-5xl md:text-6xl mb-3">Comprobantes</h1>
           <p className="hero-sub">Facturas A/B/C, notas de crédito/débito, recibos y remitos. Cada uno valida que neto + IVA = total.</p>
         </div>
         <button onClick={() => setShowNew(true)} className="btn btn-lg btn-primary">
@@ -276,7 +276,7 @@ function NuevoComprobanteModal({ obras, onClose, onSaved }) {
         <div className="px-7 py-5 border-b border-border/60 flex items-center justify-between">
           <div>
             <div className="hero-eyebrow !text-[10px]">Finanzas</div>
-            <h2 className="hero-title text-2xl">Cargar comprobante.</h2>
+            <h2 className="hero-title text-2xl">Cargar comprobante</h2>
           </div>
           <button onClick={onClose} className="p-2 rounded-full text-muted hover:bg-bone-200/70 hover:text-navy transition">
             <X size={16}/>

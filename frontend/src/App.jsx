@@ -16,6 +16,7 @@ import Comprobantes from './pages/Comprobantes'
 import Clientes from './pages/Clientes'
 import Socios from './pages/Socios'
 import Equipo from './pages/Equipo'
+import EquipoPermisos from './pages/EquipoPermisos'
 import Mensajes from './pages/Mensajes'
 import Layout from './components/Layout/Layout'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
@@ -44,6 +45,7 @@ export default function App() {
       <Route path="/clientes" element={<P requireFinanzas><Clientes /></P>} />
       <Route path="/socios" element={<P requireFinanzas><Socios /></P>} />
       <Route path="/equipo" element={<P requireAdmin><Equipo /></P>} />
+      <Route path="/equipo/:uid/permisos" element={<P requireAdmin><EquipoPermisos /></P>} />
       <Route path="/mensajes" element={<P requireAdmin><Mensajes /></P>} />
       <Route path="/" element={<Navigate to="/world" replace />} />
       <Route path="*" element={<Navigate to="/world" replace />} />

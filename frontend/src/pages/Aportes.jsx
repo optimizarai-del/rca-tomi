@@ -71,7 +71,7 @@ export default function Aportes() {
       <header className="mb-10 flex items-end justify-between gap-6 flex-wrap">
         <div>
           <div className="hero-eyebrow">Finanzas</div>
-          <h1 className="hero-title text-5xl md:text-6xl mb-3">Aportes.</h1>
+          <h1 className="hero-title text-5xl md:text-6xl mb-3">Aportes</h1>
           <p className="hero-sub">Préstamos internos de socios a la obra. Cada uno genera un INGRESO espejo automático (R2).</p>
         </div>
         <button onClick={() => setShowNew(true)} className="btn btn-lg btn-primary">

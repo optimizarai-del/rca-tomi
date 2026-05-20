@@ -668,3 +668,27 @@ class HudGlobal(BaseModel):
     materiales_criticos: int
     productividad: float
     alertas_total: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# PERMISOS GRANULARES (Sprint 13)
+# ════════════════════════════════════════════════════════════════════
+
+class PermisosIn(BaseModel):
+    """Payload PUT: lista de secciones permitidas + obras visibles.
+
+    - secciones_permitidas: lista de slugs de secciones que el user puede ver.
+      Cualquier seccion del catalogo (models.SECCIONES) que NO este aca se
+      bloquea via fila allowed=False. Mandar None deja el estado actual.
+    - obras_visibles_ids: whitelist de obra_ids. None = ve todas. Lista vacia = no ve ninguna.
+    """
+    secciones_permitidas: Optional[List[str]] = None
+    obras_visibles_ids: Optional[List[int]] = None
+
+
+class PermisosOut(BaseModel):
+    user_id: int
+    secciones_permitidas: List[str]
+    secciones_bloqueadas: List[str]
+    obras_visibles_ids: Optional[List[int]]  # None = ve todas
+    secciones_catalogo: List[str]

@@ -16,6 +16,7 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 9 | Stock multi-ubicación (depósito · en obras · pendiente retiro) | ✅ (suite 77/77) | [SPRINT_9_stock_multiubicacion.md](SPRINT_9_stock_multiubicacion.md) |
 | 10 | Presupuestos de materiales por obra | ✅ (suite 77/77) | [SPRINT_10_presupuestos_materiales.md](SPRINT_10_presupuestos_materiales.md) |
 | 11 | Bot de Telegram (texto) + vinculación de usuarios | ✅ (suite 90/90) | [SPRINT_11_telegram_bot.md](SPRINT_11_telegram_bot.md) |
+| 13 | UI cleanup + permisos granulares (secciones + obras) | ✅ (suite 103/103) | [SPRINT_13_ui_permisos.md](SPRINT_13_ui_permisos.md) |
 
 ## Cómo seguir leyendo
 

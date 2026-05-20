@@ -780,6 +780,51 @@ class AgentAction(Base):
 # WHATSAPP OUTBOUND (Sprint 4)
 # ════════════════════════════════════════════════════════════════════
 
+# ════════════════════════════════════════════════════════════════════
+# PERMISOS GRANULARES (Sprint 13)
+# ════════════════════════════════════════════════════════════════════
+#
+# Modelo simple:
+# - PermisoUsuario(user_id, seccion, allowed): blacklist explícita por sección.
+#   Si NO existe fila → la sección es accesible (default permisivo para admins).
+#   Si existe con allowed=False → bloqueada.
+# - PermisoUsuarioObra(user_id, obra_id): whitelist explícita de obras.
+#   Si el user NO tiene ninguna fila → ve TODAS las obras (default admin).
+#   Si tiene 1+ filas → solo ve las obras listadas (caso arquitecta).
+#
+# Las constantes ADMIN_ROLES siguen teniendo bypass: un super_admin no se
+# filtra ni aunque tenga filas (defensa contra lockout).
+
+SECCIONES = (
+    "obras", "ordenes", "feed",
+    "cuadrillas", "materiales", "presupuestos", "proveedores",
+    "finanzas", "movimientos", "aportes", "comprobantes", "clientes", "socios",
+    "equipo", "mensajes",
+)
+
+
+class PermisoUsuario(Base):
+    __tablename__ = "permisos_usuario"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    seccion = Column(String(40), nullable=False, index=True)
+    allowed = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class PermisoUsuarioObra(Base):
+    __tablename__ = "permisos_usuario_obra"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", foreign_keys=[user_id])
+    obra = relationship("Obra", foreign_keys=[obra_id])
+
+
 class OutboundMessage(Base):
     """Registro de cada mensaje que sale de la plataforma (WhatsApp por ahora).
 

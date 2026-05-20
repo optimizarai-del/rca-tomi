@@ -601,7 +601,7 @@ function NewEtapaModal({ obraId, siguienteNro, onClose, onSaved }) {
     <div className="fixed inset-0 bg-navy/30 backdrop-blur-sm z-50 grid place-items-center p-4 animate-fade-in" onClick={onClose}>
       <div className="card p-0 max-w-lg w-full overflow-hidden shadow-lift" onClick={e => e.stopPropagation()}>
         <div className="px-7 py-5 border-b border-border/60 flex items-center justify-between">
-          <h2 className="hero-title text-2xl">Nueva etapa.</h2>
+          <h2 className="hero-title text-2xl">Nueva etapa</h2>
           <button onClick={onClose} className="p-2 rounded-full text-muted hover:bg-bone-200/70 hover:text-navy transition">
             <X size={16}/>
           </button>

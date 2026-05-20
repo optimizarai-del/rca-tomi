@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app import models, schemas
 from app.database import get_db
-from app.security import get_current_user, require_admin, scope_demo, stamp_demo
+from app.security import get_current_user, require_admin, scope_demo, scope_obras, stamp_demo, user_visible_obra_ids
 
 router = APIRouter(prefix="/api", tags=["obras"])
 
@@ -48,6 +48,7 @@ def list_obras(
 ):
     q = db.query(models.Obra)
     q = scope_demo(q, models.Obra, user)
+    q = scope_obras(q, models.Obra, db, user)
     if estado:
         q = q.filter(models.Obra.estado == estado)
     if cliente_id:
@@ -73,7 +74,9 @@ def create_obra(
 
 @router.get("/obras/{oid}", response_model=schemas.ObraOut)
 def get_obra(oid: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
-    o = scope_demo(db.query(models.Obra), models.Obra, user).filter(models.Obra.id == oid).first()
+    q = scope_demo(db.query(models.Obra), models.Obra, user)
+    q = scope_obras(q, models.Obra, db, user)
+    o = q.filter(models.Obra.id == oid).first()
     if not o:
         raise HTTPException(404, "Obra no encontrada")
     return o

@@ -37,7 +37,7 @@ export default function Materiales() {
         <div className="hero-eyebrow">Inventario</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Materiales.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Materiales</h1>
             <p className="hero-sub">Stock multi-ubicación. Carga vía WhatsApp; visualización acá.</p>
           </div>
           <div className="flex gap-2 flex-wrap">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Send, Link2, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, Trash2, Send, Link2, X, Shield } from 'lucide-react'
 import api from '../utils/api'
 
 const ROLES = [
@@ -45,7 +46,7 @@ export default function Equipo() {
         <div className="hero-eyebrow">Administración</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Usuarios.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Usuarios</h1>
             <p className="hero-sub">Gestión de accesos y permisos del sistema.</p>
           </div>
           <button onClick={()=>setOpen(true)} className="btn-primary"><Plus size={14}/> Invitar usuario</button>
@@ -92,6 +93,9 @@ export default function Equipo() {
                 <Link2 size={12}/> Vincular TG
               </button>
             )}
+            <Link to={`/equipo/${u.id}/permisos`} className="btn-ghost text-xs" title="Permisos">
+              <Shield size={12}/> Permisos
+            </Link>
             <button onClick={()=>eliminar(u.id)} className="text-muted/60 hover:text-danger p-2">
               <Trash2 size={14}/>
             </button>

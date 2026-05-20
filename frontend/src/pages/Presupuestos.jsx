@@ -69,7 +69,7 @@ export default function Presupuestos() {
         <div className="hero-eyebrow">Materiales</div>
         <div className="flex items-end justify-between flex-wrap gap-4">
           <div>
-            <h1 className="hero-title text-5xl md:text-6xl mb-3">Presupuestos.</h1>
+            <h1 className="hero-title text-5xl md:text-6xl mb-3">Presupuestos</h1>
             <p className="hero-sub">Cómputo de materiales por obra. Carga vía WhatsApp; aprobación acá.</p>
           </div>
         </div>
