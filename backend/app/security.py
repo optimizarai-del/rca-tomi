@@ -90,6 +90,7 @@ _DEMO_TABLES = {
     "frentes", "cuadrillas", "materiales", "proveedores",
     "ordenes_trabajo", "eventos",
     "requerimientos",  # Sprint 17
+    "retiros_material",  # Sprint 14
 }
 
 

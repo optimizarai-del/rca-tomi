@@ -641,6 +641,10 @@ class StockMaterial(Base):
 
     El campo Material.stock queda como cache del total (deposito + en_obra), sin contar
     pendientes de retiro. Se recalcula vía evento.
+
+    Sprint 14 — campos extra solo relevantes para `comprado_no_retirado`:
+    - `fecha_retirar`: cuándo se va a ir a buscar la mercadería (None = sin agendar).
+    - `retiro_alertado_at`: timestamp del último aviso enviado por bot (dedupe).
     """
     __tablename__ = "stock_material"
     id = Column(Integer, primary_key=True)
@@ -648,9 +652,40 @@ class StockMaterial(Base):
     ubicacion_tipo = Column(SQLEnum(UbicacionStockTipo), nullable=False, index=True)
     ubicacion_ref = Column(Integer)  # obra_id | proveedor_id | null
     cantidad = Column(Float, nullable=False, default=0)
+    fecha_retirar = Column(Date, index=True)  # Sprint 14
+    retiro_alertado_at = Column(DateTime)  # Sprint 14
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     material = relationship("Material")
+
+
+class RetiroMaterial(Base):
+    """Sprint 14 — Histórico de retiros con detalle de pago, factura y blanco/negro.
+
+    Cada vez que efectivamente se retira mercadería de un proveedor (o de depósito a obra),
+    se crea una fila acá con todos los datos del momento del retiro. Quedan para auditoría
+    y para la pantalla "qué se retiró, cómo se pagó, qué obra".
+    """
+    __tablename__ = "retiros_material"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    material_id = Column(Integer, ForeignKey("materiales.id"), nullable=False, index=True)
+    proveedor_id = Column(Integer, ForeignKey("proveedores.id"))  # null si origen=deposito_propio
+    obra_destino_id = Column(Integer, ForeignKey("obras.id"))  # null si destino=deposito_propio
+    cantidad = Column(Float, nullable=False)
+    fecha_retiro = Column(Date, nullable=False, index=True)
+    forma_pago = Column(SQLEnum(MedioPago))  # cómo se pagó al proveedor
+    en_negro = Column(Boolean, default=False, nullable=False)  # facturado o no
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))  # foto factura (S18)
+    notas = Column(Text)
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    material = relationship("Material")
+    proveedor = relationship("Proveedor")
+    obra_destino = relationship("Obra")
+    comprobante = relationship("Comprobante")
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class Presupuesto(Base):

@@ -478,10 +478,12 @@ class MovimientoMaterialIn(BaseModel):
 
 class StockUbicacionOut(BaseModel):
     """Una fila de stock_material con referencias resueltas."""
+    stock_material_id: Optional[int] = None  # Sprint 14: id de la fila para acciones
     ubicacion_tipo: str  # 'deposito_propio' | 'en_obra' | 'comprado_no_retirado'
     ubicacion_ref: Optional[int] = None
     ubicacion_nombre: Optional[str] = None  # nombre de la obra o del proveedor (resuelto)
     cantidad: float
+    fecha_retirar: Optional[date] = None  # Sprint 14: solo aplica si tipo=comprado_no_retirado
 
     class Config:
         from_attributes = True
@@ -520,6 +522,60 @@ class StockTransferenciaIn(StockMovimientoIn):
     origen_obra_id: Optional[int] = None
     destino_tipo: str  # 'deposito_propio' | 'en_obra'
     destino_obra_id: Optional[int] = None
+
+
+# ─── Sprint 14: Pedidos / retiros ──────────────────────────────────────────
+
+
+class StockAgendarRetiroIn(BaseModel):
+    fecha_retirar: date
+
+
+class StockMarcarRetiradoIn(BaseModel):
+    cantidad: float = Field(gt=0)
+    fecha_retiro: Optional[date] = None  # default hoy
+    forma_pago: Optional[MedioPago] = None
+    en_negro: bool = False
+    comprobante_id: Optional[int] = None
+    destino_tipo: str = "deposito_propio"  # 'deposito_propio' | 'en_obra'
+    destino_obra_id: Optional[int] = None
+    notas: Optional[str] = None
+
+
+class RetiroMaterialOut(BaseModel):
+    id: int
+    material_id: int
+    proveedor_id: Optional[int] = None
+    obra_destino_id: Optional[int] = None
+    cantidad: float
+    fecha_retiro: date
+    forma_pago: Optional[MedioPago] = None
+    en_negro: bool
+    comprobante_id: Optional[int] = None
+    notas: Optional[str] = None
+    created_by_id: Optional[int] = None
+    created_at: datetime
+    # Campos resueltos para el frontend (opcional)
+    material_nombre: Optional[str] = None
+    proveedor_nombre: Optional[str] = None
+    obra_destino_nombre: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class StockPendienteRetiroOut(BaseModel):
+    """Una fila de stock pendiente de retiro con datos resueltos."""
+    stock_material_id: int
+    material_id: int
+    material_nombre: str
+    unidad: str
+    proveedor_id: Optional[int] = None
+    proveedor_nombre: Optional[str] = None
+    cantidad: float
+    fecha_retirar: Optional[date] = None
+    dias_para_retiro: Optional[int] = None  # None si no hay fecha
+    alertado_at: Optional[datetime] = None
 
 
 # ─── Sprint 10: Presupuestos ──────────────────────────────────────────────

@@ -1,4 +1,4 @@
-"""Servicio de stock multi-ubicación (Sprint 9).
+"""Servicio de stock multi-ubicación (Sprint 9 + Sprint 14).
 
 Contiene la lógica de negocio para mover stock entre las 3 ubicaciones:
 - deposito_propio: depósito de RCA (sin obra ni proveedor)
@@ -15,6 +15,7 @@ Tanto los endpoints REST como las tools del agente usan estas funciones, así qu
 toda la consistencia queda en un único lugar.
 """
 from __future__ import annotations
+from datetime import date, datetime, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -213,6 +214,170 @@ def transferir_stock(
 
 # ─── Lectura ───────────────────────────────────────────────────────────────
 
+# ─── Sprint 14: agendar y registrar retiros ────────────────────────────────
+
+
+def agendar_retiro(
+    db: Session, *, stock_material_id: int, fecha_retirar: date,
+) -> models.StockMaterial:
+    """Agenda una fecha para ir a buscar la mercadería pendiente."""
+    fila = db.query(models.StockMaterial).filter(
+        models.StockMaterial.id == stock_material_id,
+    ).first()
+    if not fila:
+        raise ValueError(f"StockMaterial id={stock_material_id} no existe")
+    if fila.ubicacion_tipo != models.UbicacionStockTipo.comprado_no_retirado:
+        raise ValueError("Solo se puede agendar retiro de stock 'comprado_no_retirado'")
+    fila.fecha_retirar = fecha_retirar
+    fila.retiro_alertado_at = None  # rearmar alerta si cambian la fecha
+    db.commit()
+    return fila
+
+
+def marcar_retirado(
+    db: Session,
+    *,
+    stock_material_id: int,
+    cantidad: float,
+    fecha_retiro: Optional[date] = None,
+    forma_pago: Optional[models.MedioPago] = None,
+    en_negro: bool = False,
+    comprobante_id: Optional[int] = None,
+    destino_tipo: str = "deposito_propio",
+    destino_obra_id: Optional[int] = None,
+    notas: Optional[str] = None,
+    usuario_id: Optional[int] = None,
+) -> models.RetiroMaterial:
+    """Efectivo retiro: mueve stock + crea RetiroMaterial con detalles de pago."""
+    if cantidad <= 0:
+        raise ValueError("La cantidad debe ser positiva")
+    if destino_tipo not in ("deposito_propio", "en_obra"):
+        raise ValueError("destino_tipo debe ser 'deposito_propio' o 'en_obra'")
+    if destino_tipo == "en_obra" and not destino_obra_id:
+        raise ValueError("Si destino es 'en_obra' hay que pasar destino_obra_id")
+
+    origen = db.query(models.StockMaterial).filter(
+        models.StockMaterial.id == stock_material_id,
+    ).first()
+    if not origen:
+        raise ValueError(f"StockMaterial id={stock_material_id} no existe")
+    if origen.ubicacion_tipo != models.UbicacionStockTipo.comprado_no_retirado:
+        raise ValueError("La fila origen debe ser 'comprado_no_retirado'")
+    if (origen.cantidad or 0) < cantidad:
+        raise ValueError(
+            f"No hay suficiente pendiente de retiro. Disponible: {origen.cantidad}"
+        )
+
+    # Validar obra destino
+    if destino_tipo == "en_obra":
+        obra = db.query(models.Obra).filter(models.Obra.id == destino_obra_id).first()
+        if not obra:
+            raise ValueError(f"Obra id={destino_obra_id} no existe")
+
+    # Validar comprobante (si vino)
+    if comprobante_id is not None:
+        cmp = db.query(models.Comprobante).filter(
+            models.Comprobante.id == comprobante_id
+        ).first()
+        if not cmp:
+            raise ValueError(f"Comprobante id={comprobante_id} no existe")
+
+    proveedor_id = origen.ubicacion_ref
+
+    # 1) Bajar de comprado_no_retirado
+    origen.cantidad = (origen.cantidad or 0) - cantidad
+    # Si quedó en 0, limpiar agenda de retiro (no tiene sentido)
+    if origen.cantidad <= 0:
+        origen.cantidad = 0
+        origen.fecha_retirar = None
+        origen.retiro_alertado_at = None
+
+    # 2) Subir destino
+    destino_ub = (
+        models.UbicacionStockTipo.deposito_propio
+        if destino_tipo == "deposito_propio"
+        else models.UbicacionStockTipo.en_obra
+    )
+    destino_ref = None if destino_tipo == "deposito_propio" else destino_obra_id
+    destino = _fila_stock(db, origen.material_id, destino_ub, destino_ref)
+    destino.cantidad = (destino.cantidad or 0) + cantidad
+
+    # 3) Registrar histórico
+    retiro = models.RetiroMaterial(
+        material_id=origen.material_id,
+        proveedor_id=proveedor_id,
+        obra_destino_id=destino_obra_id if destino_tipo == "en_obra" else None,
+        cantidad=cantidad,
+        fecha_retiro=fecha_retiro or date.today(),
+        forma_pago=forma_pago,
+        en_negro=bool(en_negro),
+        comprobante_id=comprobante_id,
+        notas=notas,
+        created_by_id=usuario_id,
+    )
+    db.add(retiro)
+
+    # 4) Auditoría en movimientos_material
+    _registrar_movimiento(
+        db, material_id=origen.material_id,
+        obra_id=destino_obra_id if destino_tipo == "en_obra" else None,
+        tipo="retiro_proveedor", cantidad=cantidad,
+        nota=notas or f"Retiro de proveedor {proveedor_id} hacia {destino_tipo}"
+             + (" (negro)" if en_negro else ""),
+        usuario_id=usuario_id,
+    )
+
+    _recalc_material_stock(db, origen.material_id)
+    db.commit()
+    db.refresh(retiro)
+    return retiro
+
+
+def pendientes_retiro_proximos(
+    db: Session, dias: int = 7, incluir_sin_fecha: bool = False,
+) -> List[models.StockMaterial]:
+    """Stock pendiente de retiro con fecha_retirar dentro de N días.
+
+    Si `incluir_sin_fecha=True` también devuelve los que están agendados sin fecha.
+    Orden: por fecha_retirar ascendente, los sin fecha al final.
+    """
+    today = date.today()
+    horizonte = today + timedelta(days=dias)
+    q = db.query(models.StockMaterial).filter(
+        models.StockMaterial.ubicacion_tipo
+        == models.UbicacionStockTipo.comprado_no_retirado,
+        models.StockMaterial.cantidad > 0,
+    )
+    if not incluir_sin_fecha:
+        q = q.filter(
+            models.StockMaterial.fecha_retirar.isnot(None),
+            models.StockMaterial.fecha_retirar <= horizonte,
+        )
+    return q.order_by(
+        models.StockMaterial.fecha_retirar.asc().nullslast(),
+    ).all()
+
+
+def listar_retiros(
+    db: Session,
+    desde: Optional[date] = None,
+    hasta: Optional[date] = None,
+    obra_id: Optional[int] = None,
+    proveedor_id: Optional[int] = None,
+    limit: int = 200,
+) -> List[models.RetiroMaterial]:
+    q = db.query(models.RetiroMaterial)
+    if desde is not None:
+        q = q.filter(models.RetiroMaterial.fecha_retiro >= desde)
+    if hasta is not None:
+        q = q.filter(models.RetiroMaterial.fecha_retiro <= hasta)
+    if obra_id is not None:
+        q = q.filter(models.RetiroMaterial.obra_destino_id == obra_id)
+    if proveedor_id is not None:
+        q = q.filter(models.RetiroMaterial.proveedor_id == proveedor_id)
+    return q.order_by(models.RetiroMaterial.fecha_retiro.desc()).limit(limit).all()
+
+
 def breakdown_por_material(db: Session, material_id: Optional[int] = None) -> List[dict]:
     """Devuelve lista de dicts compatibles con MaterialConStockOut."""
     q = db.query(models.Material)
@@ -237,10 +402,12 @@ def breakdown_por_material(db: Session, material_id: Optional[int] = None) -> Li
             elif u.ubicacion_tipo == models.UbicacionStockTipo.deposito_propio:
                 nombre = "Depósito propio"
             ubicaciones.append({
+                "stock_material_id": u.id,  # Sprint 14: id de la fila StockMaterial para acciones
                 "ubicacion_tipo": u.ubicacion_tipo.value if hasattr(u.ubicacion_tipo, "value") else u.ubicacion_tipo,
                 "ubicacion_ref": u.ubicacion_ref,
                 "ubicacion_nombre": nombre,
                 "cantidad": float(u.cantidad or 0),
+                "fecha_retirar": u.fecha_retirar,  # Sprint 14
             })
             if u.ubicacion_tipo in (models.UbicacionStockTipo.deposito_propio, models.UbicacionStockTipo.en_obra):
                 total_disponible += float(u.cantidad or 0)
