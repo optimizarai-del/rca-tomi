@@ -104,6 +104,24 @@ class EstadoMovimiento(str, Enum):
     A_REVISAR = "A_REVISAR"
 
 
+# Sprint 21
+class LegalidadMovimiento(str, Enum):
+    """Caja 'blanco' (con factura, formal) o 'negro' (efectivo informal)."""
+    blanco = "blanco"
+    negro = "negro"
+
+
+class CobroPagoEstado(str, Enum):
+    """Estado de efectivización del movimiento.
+
+    Para INGRESO: pendiente → cobrado.
+    Para EGRESO:  pendiente → pagado.
+    """
+    pendiente = "pendiente"
+    cobrado = "cobrado"
+    pagado = "pagado"
+
+
 class EstadoDevolucion(str, Enum):
     PENDIENTE = "PENDIENTE"
     DEVUELTO_PARCIAL = "DEVUELTO_PARCIAL"
@@ -388,6 +406,20 @@ class MovimientoObra(Base):
     hoja_fisica = Column(String(100))  # "Hoja 15 - 16/03/26"
     canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web, nullable=False)
     cargado_por = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Sprint 21 — contabilidad blanco/negro por obra
+    legalidad = Column(
+        SQLEnum(LegalidadMovimiento), default=LegalidadMovimiento.blanco,
+        nullable=False, index=True, server_default="blanco",
+    )
+    cobro_pago_estado = Column(
+        SQLEnum(CobroPagoEstado), default=CobroPagoEstado.pendiente,
+        nullable=False, index=True, server_default="pendiente",
+    )
+    fecha_cobro_pago = Column(Date, index=True)  # cuándo se efectivizó (null = pendiente)
+    iva_pct = Column(Numeric(5, 4))  # 0.21 = 21% (solo blanco normalmente)
+    iibb_pct = Column(Numeric(5, 4))  # 0.03 = 3%
+    gastos_banco = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

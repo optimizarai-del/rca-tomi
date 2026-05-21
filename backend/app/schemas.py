@@ -9,6 +9,7 @@ from app.models import (
     CategoriaEgreso, MedioPago, EstadoMovimiento, EstadoDevolucion,
     TipoComprobante, EstadoFiscal, TipoRetencion,
     RequerimientoEstado,
+    LegalidadMovimiento, CobroPagoEstado,
 )
 
 
@@ -254,6 +255,13 @@ class MovimientoIn(BaseModel):
     estado: EstadoMovimiento = EstadoMovimiento.CONFIRMADO
     hoja_fisica: Optional[str] = None
     canal: CanalCarga = CanalCarga.web
+    # Sprint 21
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    fecha_cobro_pago: Optional[date] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: float = 0
 
 
 class MovimientoOut(BaseModel):
@@ -280,6 +288,13 @@ class MovimientoOut(BaseModel):
     canal: CanalCarga
     cargado_por: int
     created_at: datetime
+    # Sprint 21
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    fecha_cobro_pago: Optional[date] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: float = 0
 
     class Config:
         from_attributes = True
@@ -291,6 +306,48 @@ class FlujoCajaSemana(BaseModel):
     egresos: float
     saldo_semana: float
     saldo_acumulado: float
+
+
+# ─── Sprint 21: resumen contable blanco/negro por obra ───────────────────
+
+
+class FinanzasCajaResumen(BaseModel):
+    """Una caja (blanca o negra) desglosada por estado."""
+    ingresos_cobrado: float = 0
+    ingresos_pendiente: float = 0
+    egresos_pagado: float = 0
+    egresos_pendiente: float = 0
+    iva_total: float = 0       # solo aplica caja blanco
+    iibb_total: float = 0
+    gastos_banco_total: float = 0
+    neto_efectivo: float = 0   # cobrado - pagado (lo que tenés ya en mano)
+    saldo_compromiso: float = 0  # cobrado_pendiente - pagado_pendiente (lo que va a entrar/salir)
+
+
+class FinanzasObraResumen(BaseModel):
+    """Resumen contable de una obra con desglose por caja blanco/negro.
+
+    'lo que tenés' = neto_efectivo de las 2 cajas.
+    'lo que se debe' = saldo_compromiso (positivo a favor, negativo en contra).
+    """
+    obra_id: int
+    monto_contrato: float = 0
+    blanco: FinanzasCajaResumen
+    negro: FinanzasCajaResumen
+    # Consolidado
+    lo_que_tenes: float = 0
+    lo_que_se_debe: float = 0   # neto: positivo = a favor, negativo = a pagar
+    saldo_total: float = 0      # lo_que_tenes + lo_que_se_debe
+
+
+class FinanzasMovimientoUpdate(BaseModel):
+    """Patch parcial — usado por endpoints como marcar-cobrado/marcar-pagado."""
+    cobro_pago_estado: Optional[CobroPagoEstado] = None
+    fecha_cobro_pago: Optional[date] = None
+    legalidad: Optional[LegalidadMovimiento] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: Optional[float] = None
 
 
 # ════════════════════════════════════════════════════════════════════

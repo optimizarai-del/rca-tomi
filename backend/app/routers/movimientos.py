@@ -39,6 +39,9 @@ def list_movimientos(
     desde: Optional[date] = None,
     hasta: Optional[date] = None,
     estado: Optional[models.EstadoMovimiento] = None,
+    # Sprint 21
+    legalidad: Optional[models.LegalidadMovimiento] = None,
+    cobro_pago_estado: Optional[models.CobroPagoEstado] = None,
     limit: int = Query(default=200, le=1000),
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
@@ -57,6 +60,10 @@ def list_movimientos(
         q = q.filter(models.MovimientoObra.fecha <= hasta)
     if estado:
         q = q.filter(models.MovimientoObra.estado == estado)
+    if legalidad:
+        q = q.filter(models.MovimientoObra.legalidad == legalidad)
+    if cobro_pago_estado:
+        q = q.filter(models.MovimientoObra.cobro_pago_estado == cobro_pago_estado)
     return q.order_by(models.MovimientoObra.fecha.desc(), models.MovimientoObra.id.desc()).limit(limit).all()
 
 
@@ -220,6 +227,117 @@ def cheques_a_vencer(
         }
         for r in rows
     ]
+
+
+# ─── Sprint 21: resumen contable blanco/negro por obra ───────────────────
+
+
+def _agregar_caja(rows, legalidad: models.LegalidadMovimiento) -> schemas.FinanzasCajaResumen:
+    """Calcula totales de una caja (blanco o negro) desde la lista de movimientos."""
+    out = schemas.FinanzasCajaResumen()
+    for m in rows:
+        if m.legalidad != legalidad:
+            continue
+        monto = float(m.monto or 0)
+        gastos = float(m.gastos_banco or 0)
+        iva = float(m.iva_pct or 0) * monto if m.iva_pct else 0
+        iibb = float(m.iibb_pct or 0) * monto if m.iibb_pct else 0
+        out.iva_total += iva
+        out.iibb_total += iibb
+        out.gastos_banco_total += gastos
+        if m.tipo == models.TipoMovimiento.INGRESO:
+            if m.cobro_pago_estado == models.CobroPagoEstado.cobrado:
+                out.ingresos_cobrado += monto
+            else:
+                out.ingresos_pendiente += monto
+        else:  # EGRESO
+            if m.cobro_pago_estado == models.CobroPagoEstado.pagado:
+                out.egresos_pagado += monto
+            else:
+                out.egresos_pendiente += monto
+    out.neto_efectivo = round(out.ingresos_cobrado - out.egresos_pagado, 2)
+    out.saldo_compromiso = round(out.ingresos_pendiente - out.egresos_pendiente, 2)
+    out.iva_total = round(out.iva_total, 2)
+    out.iibb_total = round(out.iibb_total, 2)
+    out.gastos_banco_total = round(out.gastos_banco_total, 2)
+    out.ingresos_cobrado = round(out.ingresos_cobrado, 2)
+    out.ingresos_pendiente = round(out.ingresos_pendiente, 2)
+    out.egresos_pagado = round(out.egresos_pagado, 2)
+    out.egresos_pendiente = round(out.egresos_pendiente, 2)
+    return out
+
+
+@router.get("/obra/{oid}/resumen-finanzas", response_model=schemas.FinanzasObraResumen)
+def resumen_finanzas_obra(
+    oid: int,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(get_current_user),
+):
+    """Sprint 21 — Resumen contable de la obra desglosado por caja blanco/negro.
+
+    Devuelve los dos lados (blanco y negro) con cobrado/pendiente, y los
+    consolidados 'lo que tenés' (cobrado − pagado) y 'lo que se debe'
+    (pendiente neto: positivo = a favor, negativo = en contra).
+    """
+    obra = db.query(models.Obra).filter(models.Obra.id == oid).first()
+    if not obra:
+        raise HTTPException(404, "Obra no encontrada")
+
+    movs = db.query(models.MovimientoObra).filter(
+        models.MovimientoObra.obra_id == oid
+    ).all()
+
+    blanco = _agregar_caja(movs, models.LegalidadMovimiento.blanco)
+    negro = _agregar_caja(movs, models.LegalidadMovimiento.negro)
+
+    lo_que_tenes = round(blanco.neto_efectivo + negro.neto_efectivo, 2)
+    lo_que_se_debe = round(blanco.saldo_compromiso + negro.saldo_compromiso, 2)
+    return schemas.FinanzasObraResumen(
+        obra_id=oid,
+        monto_contrato=float(obra.monto_contrato or 0),
+        blanco=blanco,
+        negro=negro,
+        lo_que_tenes=lo_que_tenes,
+        lo_que_se_debe=lo_que_se_debe,
+        saldo_total=round(lo_que_tenes + lo_que_se_debe, 2),
+    )
+
+
+@router.patch("/{mid}/finanzas", response_model=schemas.MovimientoOut)
+def patch_finanzas_movimiento(
+    mid: int,
+    data: schemas.FinanzasMovimientoUpdate,
+    db: Session = Depends(get_db),
+    user: models.User = Depends(require_admin),
+):
+    """Actualiza solo los campos contables (legalidad, cobrado/pagado, fechas, %).
+
+    Usado por la UI cuando hacés 'marcar cobrado' / 'marcar pagado' / cambiar a
+    blanco o negro sin tener que reenviar todo el payload del movimiento.
+    """
+    m = db.query(models.MovimientoObra).filter(models.MovimientoObra.id == mid).first()
+    if not m:
+        raise HTTPException(404, "Movimiento no encontrado")
+    payload = data.model_dump(exclude_unset=True)
+
+    # Validar coherencia tipo ↔ cobro_pago_estado
+    if "cobro_pago_estado" in payload:
+        nuevo = payload["cobro_pago_estado"]
+        if m.tipo == models.TipoMovimiento.INGRESO and nuevo == models.CobroPagoEstado.pagado:
+            raise HTTPException(400, "Un INGRESO no puede tener cobro_pago_estado='pagado' (usar 'cobrado')")
+        if m.tipo == models.TipoMovimiento.EGRESO and nuevo == models.CobroPagoEstado.cobrado:
+            raise HTTPException(400, "Un EGRESO no puede tener cobro_pago_estado='cobrado' (usar 'pagado')")
+        # Si quedó cobrado/pagado y no hay fecha_cobro_pago, default a hoy
+        if nuevo in (models.CobroPagoEstado.cobrado, models.CobroPagoEstado.pagado):
+            if "fecha_cobro_pago" not in payload and not m.fecha_cobro_pago:
+                payload["fecha_cobro_pago"] = date.today()
+        if nuevo == models.CobroPagoEstado.pendiente:
+            payload["fecha_cobro_pago"] = None
+
+    for k, v in payload.items():
+        setattr(m, k, v)
+    db.commit(); db.refresh(m)
+    return m
 
 
 @router.get("/descalce-fiscal")
