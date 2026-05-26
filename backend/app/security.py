@@ -91,6 +91,7 @@ _DEMO_TABLES = {
     "ordenes_trabajo", "eventos",
     "requerimientos",  # Sprint 17
     "retiros_material",  # Sprint 14
+    "cliente_notas",  # Sprint 22
 }
 
 

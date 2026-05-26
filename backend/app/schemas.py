@@ -98,14 +98,75 @@ class ClienteIn(BaseModel):
     regimen_fiscal_id: Optional[int] = None
     notas: Optional[str] = None
     activo: bool = True
+    # Sprint 22 — memoria
+    cbu: Optional[str] = None
+    alias_bancario: Optional[str] = None
+    condiciones_pago: Optional[str] = None
+    contacto_secundario: Optional[str] = None
+    preferencias: Optional[str] = None
 
 
 class ClienteOut(ClienteIn):
     id: int
     created_at: datetime
+    last_interaction_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+# ─── Sprint 22: detalle / memoria del cliente ───────────────────────────
+
+class ClienteNotaIn(BaseModel):
+    cliente_id: int
+    texto: str = Field(min_length=1, max_length=2000)
+    importante: bool = False
+
+
+class ClienteNotaOut(BaseModel):
+    id: int
+    cliente_id: int
+    autor_id: Optional[int] = None
+    texto: str
+    importante: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ClienteObraResumen(BaseModel):
+    """Una obra del cliente con sus números clave."""
+    id: int
+    codigo: str
+    nombre: str
+    estado: ObraStatus
+    monto_contrato: float = 0
+    fecha_inicio: Optional[date] = None
+    fecha_fin_estimada: Optional[date] = None
+    progreso: float = 0
+    # Sprint 21 — totales de la caja contable
+    ingresos_cobrado: float = 0
+    ingresos_pendiente: float = 0
+    saldo_obra: float = 0  # cobrado - pagado consolidado
+
+
+class ClienteResumenFinanciero(BaseModel):
+    """Agregado de todas las obras del cliente."""
+    monto_contratos_total: float = 0
+    ingresos_cobrado_total: float = 0
+    ingresos_pendiente_total: float = 0  # lo que el cliente NOS debe
+    egresos_pagado_total: float = 0
+    egresos_pendiente_total: float = 0   # lo que nosotros debemos por esta obra (proveedores)
+    obras_total: int = 0
+    obras_en_curso: int = 0
+    obras_finalizadas: int = 0
+
+
+class ClienteDetalleOut(ClienteOut):
+    obras: List[ClienteObraResumen] = []
+    resumen_financiero: ClienteResumenFinanciero
+    interacciones: List[ClienteNotaOut] = []  # log de notas (renombrado para no chocar con Cliente.notas string)
 
 
 # ════════════════════════════════════════════════════════════════════

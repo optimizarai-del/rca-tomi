@@ -21,6 +21,7 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 15 | Proveedores extendido (historial facturado/presupuestado + inactivos) | ✅ (suite 144/144) | [SPRINT_15_proveedores_detalle.md](SPRINT_15_proveedores_detalle.md) |
 | 17 | Requerimientos por obra (bot + web) | ✅ (suite 115/115) | [SPRINT_17_requerimientos.md](SPRINT_17_requerimientos.md) |
 | 21 | Contabilidad blanco/negro por obra (2 cajas + estados + impuestos, sin gráficos) | ✅ (suite 160/160) | [SPRINT_21_blanco_negro.md](SPRINT_21_blanco_negro.md) |
+| 22 | Memoria de clientes (datos recurrentes + notas + resumen multi-obra) | ✅ (suite 174/174) | [SPRINT_22_memoria_clientes.md](SPRINT_22_memoria_clientes.md) |
 | 12 | Perfil demo dual (`is_demo` + scoping automático) | ✅ | — |
 | 20 | Deploy producción + dominio + handoff a Tomi | 🟡 en curso | [SPRINT_20_deploy_handoff.md](SPRINT_20_deploy_handoff.md) |
 

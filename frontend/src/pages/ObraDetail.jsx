@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, MapPin, Users, Package, Activity, AlertCircle,
   Calendar, DollarSign, Plus, Check, Clock, ArrowRight, X, Loader2, Layers,
@@ -89,7 +89,18 @@ export default function ObraDetail() {
               <p className="text-muted text-lg mb-2 flex items-center gap-2">
                 <MapPin size={14}/> {obra.ciudad || obra.direccion}
               </p>
-              {data?.cliente_nombre && <p className="text-muted text-sm mb-6">Cliente · <span className="text-navy">{data.cliente_nombre}</span></p>}
+              {data?.cliente_nombre && (
+                <p className="text-muted text-sm mb-6">
+                  Cliente ·{' '}
+                  {obra.cliente_id ? (
+                    <Link to={`/clientes/${obra.cliente_id}`} className="text-navy hover:underline">
+                      {data.cliente_nombre}
+                    </Link>
+                  ) : (
+                    <span className="text-navy">{data.cliente_nombre}</span>
+                  )}
+                </p>
+              )}
               {obra.descripcion && <p className="text-navy/80 text-base leading-relaxed max-w-xl mb-8">{obra.descripcion}</p>}
 
               <div className="inline-flex items-center gap-2 bg-white border border-border rounded-full px-4 py-2 mb-8">

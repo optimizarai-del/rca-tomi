@@ -267,7 +267,12 @@ class RegimenFiscal(Base):
 
 
 class Cliente(Base):
-    """Cliente final de las obras. Define el régimen fiscal por defecto."""
+    """Cliente final de las obras. Define el régimen fiscal por defecto.
+
+    Sprint 22 — memoria: además de datos fiscales, guarda datos recurrentes
+    que se autocompletan al cargar comprobantes/movimientos (CBU, alias,
+    condiciones de pago) y un historial de interacciones via ClienteNota.
+    """
     __tablename__ = "clientes"
     id = Column(Integer, primary_key=True)
     is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
@@ -281,11 +286,34 @@ class Cliente(Base):
     regimen_fiscal_id = Column(Integer, ForeignKey("regimenes_fiscales.id"))
     notas = Column(Text)
     activo = Column(Boolean, default=True)
+    # Sprint 22 — memoria del cliente
+    cbu = Column(String(30))  # CBU bancaria para transferencias
+    alias_bancario = Column(String(50))
+    condiciones_pago = Column(String(200))  # "30 días fecha factura", etc.
+    contacto_secundario = Column(String(200))  # nombre + teléfono libre
+    preferencias = Column(Text)  # observaciones recurrentes (preferencias de horario, contactos, etc.)
+    last_interaction_at = Column(DateTime, index=True)  # actualizado al crear obra/movimiento
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     regimen_fiscal = relationship("RegimenFiscal")
     obras = relationship("Obra", back_populates="cliente")
+    notas_cliente = relationship("ClienteNota", back_populates="cliente", cascade="all, delete-orphan")
+
+
+class ClienteNota(Base):
+    """Sprint 22 — Notas/log de interacciones del cliente con timestamp y autor."""
+    __tablename__ = "cliente_notas"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    cliente_id = Column(Integer, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
+    autor_id = Column(Integer, ForeignKey("users.id"))
+    texto = Column(Text, nullable=False)
+    importante = Column(Boolean, default=False, nullable=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    cliente = relationship("Cliente", back_populates="notas_cliente")
+    autor = relationship("User", foreign_keys=[autor_id])
 
 
 # ════════════════════════════════════════════════════════════════════
