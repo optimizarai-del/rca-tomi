@@ -204,16 +204,22 @@ def generar_plan(
     return borrador
 
 
-def aplicar_plan(db, borrador: models.PlanObraBorrador) -> dict:
+def aplicar_plan(db, borrador: models.PlanObraBorrador, user=None) -> dict:
     """Crea EtapaObra y Frente reales según el resultado_json del borrador.
 
     Devuelve {'etapas_creadas': N, 'frentes_creados': M}. Es idempotente
     en el sentido de que un borrador 'aplicado' no se puede volver a aplicar.
 
     NO crea Materiales (solo se sugieren — el usuario decide si los carga manual).
+
+    Si se pasa `user`, hereda is_demo del usuario en las nuevas filas (defensivo:
+    el listener before_flush también lo haría, pero el patrón del proyecto es
+    stampear manual, ver Sprints 13/14/17/22).
     """
     if borrador.estado != models.PlanObraEstado.borrador:
         raise ValueError(f"El borrador ya está en estado {borrador.estado.value}")
+
+    from app.security import stamp_demo
 
     data = json.loads(borrador.resultado_json)
     obra_id = borrador.obra_id
@@ -236,6 +242,8 @@ def aplicar_plan(db, borrador: models.PlanObraBorrador) -> dict:
             fecha_estimada=fe,
             notas=et.get("notas"),
         )
+        if user is not None:
+            stamp_demo(nueva, user)
         db.add(nueva); etapas_creadas += 1
 
     frentes_creados = 0
@@ -247,6 +255,8 @@ def aplicar_plan(db, borrador: models.PlanObraBorrador) -> dict:
             estado=models.FrenteEstado.pendiente,
             notas=fr.get("notas"),
         )
+        if user is not None:
+            stamp_demo(nuevo, user)
         db.add(nuevo); frentes_creados += 1
 
     from datetime import datetime

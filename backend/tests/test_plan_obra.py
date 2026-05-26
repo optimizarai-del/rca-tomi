@@ -60,6 +60,33 @@ def test_no_se_puede_aplicar_dos_veces(db, obra):
         plan_service.aplicar_plan(db, b)
 
 
+def test_aplicar_plan_hereda_is_demo_del_user(db, obra, admin_user):
+    """E2E descubrió que sin stamp_demo explícito las nuevas etapas quedaban
+    con is_demo=False aunque el user fuera demo. El fix pasa el user al servicio
+    y stampea cada fila nueva."""
+    # Simular user demo
+    admin_user.is_demo = True
+    db.commit()
+
+    b = plan_service.generar_plan(db, obra=obra, contexto="Plan demo", user_id=admin_user.id)
+    plan_service.aplicar_plan(db, b, user=admin_user)
+
+    etapas_nuevas = db.query(models.EtapaObra).filter(
+        models.EtapaObra.obra_id == obra.id,
+        models.EtapaObra.id > 0,  # todas
+    ).all()
+    # Todas las etapas creadas por el plan deben tener is_demo=True
+    nuevas = [e for e in etapas_nuevas if e.nombre.startswith(("Anticipo", "Etapa"))]
+    assert nuevas, "deberia haber etapas creadas"
+    assert all(e.is_demo is True for e in nuevas), \
+        f"etapas sin is_demo: {[(e.id, e.is_demo) for e in nuevas]}"
+
+    frentes_nuevos = db.query(models.Frente).filter(models.Frente.obra_id == obra.id).all()
+    assert frentes_nuevos
+    assert all(f.is_demo is True for f in frentes_nuevos), \
+        f"frentes sin is_demo: {[(f.id, f.is_demo) for f in frentes_nuevos]}"
+
+
 def test_endpoint_generar_borrador(client, auth_headers, obra):
     r = client.post(
         f"/api/obras/{obra.id}/plan/generar",

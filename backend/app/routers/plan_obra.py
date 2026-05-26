@@ -126,7 +126,7 @@ def aplicar_borrador(
     if not b:
         raise HTTPException(404, "Borrador no encontrado")
     try:
-        resumen = plan_service.aplicar_plan(db, b)
+        resumen = plan_service.aplicar_plan(db, b, user=user)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return schemas.PlanObraAplicarOut(**resumen)
