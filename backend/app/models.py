@@ -904,6 +904,39 @@ class RequerimientoEstado(str, Enum):
     resuelto = "resuelto"
 
 
+# Sprint 24 — Planificación de obra asistida
+class PlanObraEstado(str, Enum):
+    borrador = "borrador"
+    aplicado = "aplicado"
+    descartado = "descartado"
+
+
+class PlanObraBorrador(Base):
+    """Sprint 24 — Borrador de plan de obra generado con IA.
+
+    Workflow:
+    1. Usuario abre `/obra/:id` tab Planificación, escribe contexto.
+    2. POST /api/obras/:id/plan/generar → llama a Claude, persiste borrador con resultado_json.
+    3. Frontend muestra preview, usuario puede editar resultado_json (mismo endpoint o PATCH).
+    4. POST /api/obras/:id/plan/:plan_id/aplicar → crea EtapaObra y Frente reales.
+    5. estado → aplicado (no se puede aplicar 2 veces; volver a generar crea otro borrador).
+    """
+    __tablename__ = "planes_obra_borrador"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False, index=True)
+    prompt_input = Column(Text, nullable=False)  # contexto que pasó el usuario
+    resultado_json = Column(Text, nullable=False)  # JSON con etapas, frentes, materiales sugeridos
+    estado = Column(SQLEnum(PlanObraEstado), default=PlanObraEstado.borrador, nullable=False, index=True)
+    model_used = Column(String(60))  # ej "claude-sonnet-4-5"
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    aplicado_at = Column(DateTime)
+
+    obra = relationship("Obra")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
 class Requerimiento(Base):
     """Sprint 17 — Imprevisto/pedido reportado por bot o web sobre una obra.
 

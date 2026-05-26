@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models import (
     UserRole, UserStatus, ObraStatus, ObraSalud, FrenteEstado,
     TaskStatus, EventoTipo, CanalCarga,
@@ -10,6 +10,7 @@ from app.models import (
     TipoComprobante, EstadoFiscal, TipoRetencion,
     RequerimientoEstado,
     LegalidadMovimiento, CobroPagoEstado,
+    PlanObraEstado,
 )
 
 
@@ -930,3 +931,68 @@ class PermisosOut(BaseModel):
     secciones_bloqueadas: List[str]
     obras_visibles_ids: Optional[List[int]]  # None = ve todas
     secciones_catalogo: List[str]
+
+
+# ════════════════════════════════════════════════════════════════════
+# PLANIFICACION DE OBRA ASISTIDA (Sprint 24)
+# ════════════════════════════════════════════════════════════════════
+
+
+class PlanObraGenerarIn(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())  # permitir campo model_override
+    contexto: str = Field(min_length=10, max_length=4000)
+    model_override: Optional[str] = None
+
+
+class PlanObraEtapaPropuesta(BaseModel):
+    nombre: str
+    nro_etapa: int = 0
+    monto_contractual: float = 0
+    porcentaje_avance: float = 0
+    fecha_estimada: Optional[date] = None
+    notas: Optional[str] = None
+
+
+class PlanObraFrentePropuesto(BaseModel):
+    nombre: str
+    tipo: Optional[str] = None
+    notas: Optional[str] = None
+
+
+class PlanObraMaterialSugerido(BaseModel):
+    nombre: str
+    categoria: Optional[str] = None
+    unidad: str = "u"
+    cantidad: float = 0
+    etapa: Optional[str] = None
+
+
+class PlanObraResultado(BaseModel):
+    etapas: List[PlanObraEtapaPropuesta] = []
+    frentes: List[PlanObraFrentePropuesto] = []
+    materiales_sugeridos: List[PlanObraMaterialSugerido] = []
+    notas_generales: Optional[str] = None
+
+
+class PlanObraBorradorOut(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    id: int
+    obra_id: int
+    prompt_input: str
+    resultado: PlanObraResultado  # resultado_json deserializado
+    estado: PlanObraEstado
+    model_used: Optional[str] = None
+    created_by_id: Optional[int] = None
+    created_at: datetime
+    aplicado_at: Optional[datetime] = None
+
+
+class PlanObraEditIn(BaseModel):
+    """Para editar el resultado del borrador antes de aplicarlo."""
+    resultado: PlanObraResultado
+
+
+class PlanObraAplicarOut(BaseModel):
+    etapas_creadas: int
+    frentes_creados: int
+    materiales_sugeridos_count: int

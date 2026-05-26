@@ -145,6 +145,7 @@ export default function ObraDetail() {
         <div className="px-8 max-w-[1400px] mx-auto flex gap-1 overflow-x-auto">
           {[
             { v: 'overview', l: 'Resumen' },
+            { v: 'planificacion', l: `Planificación IA` },
             { v: 'finanzas', l: `Finanzas` },
             { v: 'etapas', l: `Etapas` },
             { v: 'frentes', l: `Frentes` },
@@ -170,6 +171,7 @@ export default function ObraDetail() {
         {tab === 'ordenes' && <OrdenesTab ordenes={ordenes} obraId={id} reload={load}/>}
         {tab === 'eventos' && <EventosTab eventos={eventos} obraId={id} reload={load}/>}
         {tab === 'requerimientos' && <RequerimientosTab obraId={id} obraCodigo={obra?.codigo}/>}
+        {tab === 'planificacion' && <PlanificacionTab obraId={id} obra={obra} onPlanAplicado={load}/>}
       </div>
     </div>
   )
@@ -1180,6 +1182,335 @@ function FinanzasBlancoNegroTab({ obraId, dashboard }) {
           <FlujoProyectadoTable items={proyectado} fmtMoney={fmtMoneyArs}/>
         )}
       </section>
+    </div>
+  )
+}
+
+// ─── Sprint 24: Planificación de obra asistida por IA ──────────────────
+
+const TIPO_FRENTE_OPTS = ['estructura', 'mamposteria', 'instalaciones', 'terminaciones', 'otros']
+
+function PlanificacionTab({ obraId, obra, onPlanAplicado }) {
+  const [borradores, setBorradores] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [contexto, setContexto] = useState('')
+  const [generando, setGenerando] = useState(false)
+  const [activo, setActivo] = useState(null)
+  const [aplicando, setAplicando] = useState(false)
+
+  const cargar = () => {
+    setLoading(true)
+    return api.get(`/api/obras/${obraId}/plan`).then(r => {
+      setBorradores(r.data)
+      const ult = r.data.find(b => b.estado === 'borrador') || r.data[0] || null
+      setActivo(ult)
+      setLoading(false)
+    })
+  }
+  useEffect(() => { cargar() }, [obraId])
+
+  const generar = async (e) => {
+    e.preventDefault()
+    if (contexto.trim().length < 10) return
+    setGenerando(true)
+    try {
+      const r = await api.post(`/api/obras/${obraId}/plan/generar`, { contexto: contexto.trim() })
+      setActivo(r.data)
+      setContexto('')
+      await cargar()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error generando plan')
+    } finally {
+      setGenerando(false)
+    }
+  }
+
+  const guardarEdicion = async (resultado) => {
+    if (!activo || activo.estado !== 'borrador') return
+    const r = await api.put(`/api/obras/${obraId}/plan/${activo.id}`, { resultado })
+    setActivo(r.data)
+    cargar()
+  }
+
+  const aplicar = async () => {
+    if (!activo || activo.estado !== 'borrador') return
+    if (!confirm('Aplicar este plan crea etapas y frentes reales en la obra. ¿Confirmás?')) return
+    setAplicando(true)
+    try {
+      const r = await api.post(`/api/obras/${obraId}/plan/${activo.id}/aplicar`)
+      alert(`Aplicado: ${r.data.etapas_creadas} etapas y ${r.data.frentes_creados} frentes creados.`)
+      await cargar()
+      if (onPlanAplicado) onPlanAplicado()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error aplicando plan')
+    } finally {
+      setAplicando(false)
+    }
+  }
+
+  const descartar = async () => {
+    if (!activo || activo.estado !== 'borrador') return
+    if (!confirm('¿Descartar este borrador?')) return
+    await api.post(`/api/obras/${obraId}/plan/${activo.id}/descartar`)
+    cargar()
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="card p-6">
+        <h2 className="text-lg font-semibold mb-1">Generar plan asistido</h2>
+        <p className="text-xs text-muted mb-4">
+          Describí brevemente la obra (tipo, m², plazos, particularidades). El agente devuelve un borrador
+          con etapas, frentes y materiales sugeridos que después podés editar y aplicar.
+        </p>
+        <form onSubmit={generar} className="space-y-3">
+          <textarea
+            className="input min-h-[100px]"
+            value={contexto}
+            onChange={e => setContexto(e.target.value)}
+            placeholder="Ej: Casa 180m² una planta, 4 ambientes, llave en mano. Cliente quiere terminar en 8 meses. Estructura tradicional, terminaciones medias. Hay anticipo del 30%."
+          />
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] text-muted">
+              {contexto.length} / 4000 caracteres · mínimo 10
+            </div>
+            <button className="btn-primary" disabled={generando || contexto.trim().length < 10}>
+              {generando ? 'Generando…' : 'Generar borrador'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {borradores.length > 0 && (
+        <section className="flex gap-2 flex-wrap text-xs">
+          <span className="text-muted self-center">Borradores:</span>
+          {borradores.map(b => {
+            const isActive = activo?.id === b.id
+            const chip = b.estado === 'aplicado' ? 'chip-olive' : b.estado === 'descartado' ? 'chip-muted' : 'chip-navy'
+            return (
+              <button
+                key={b.id}
+                onClick={() => setActivo(b)}
+                className={`px-3 py-1.5 rounded-full border transition ${
+                  isActive ? 'bg-navy text-bone border-navy' : 'border-border hover:bg-bone-200'
+                }`}
+              >
+                #{b.id} <span className={`${chip} text-[10px] ml-1`}>{b.estado}</span>
+                <span className="opacity-70 ml-1">{new Date(b.created_at).toLocaleDateString('es-AR')}</span>
+              </button>
+            )
+          })}
+        </section>
+      )}
+
+      {!loading && borradores.length === 0 && (
+        <div className="text-muted text-sm text-center border border-dashed border-border rounded-xl py-10">
+          Sin borradores todavía. Generá el primero arriba.
+        </div>
+      )}
+
+      {activo && <PlanPreview borrador={activo} onSave={guardarEdicion} onAplicar={aplicar} onDescartar={descartar} aplicando={aplicando}/>}
+    </div>
+  )
+}
+
+function PlanPreview({ borrador, onSave, onAplicar, onDescartar, aplicando }) {
+  const [etapas, setEtapas] = useState(borrador.resultado.etapas || [])
+  const [frentes, setFrentes] = useState(borrador.resultado.frentes || [])
+  const [materiales, setMateriales] = useState(borrador.resultado.materiales_sugeridos || [])
+  const [notas, setNotas] = useState(borrador.resultado.notas_generales || '')
+  const [dirty, setDirty] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    setEtapas(borrador.resultado.etapas || [])
+    setFrentes(borrador.resultado.frentes || [])
+    setMateriales(borrador.resultado.materiales_sugeridos || [])
+    setNotas(borrador.resultado.notas_generales || '')
+    setDirty(false)
+  }, [borrador.id])
+
+  const editable = borrador.estado === 'borrador'
+  const marcarDirty = () => setDirty(true)
+
+  const guardar = async () => {
+    setGuardando(true)
+    try {
+      await onSave({
+        etapas, frentes, materiales_sugeridos: materiales, notas_generales: notas,
+      })
+      setDirty(false)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="card p-6 space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-muted font-semibold">
+            Borrador #{borrador.id} · modelo: {borrador.model_used || '—'}
+          </div>
+          <h3 className="text-lg font-semibold mt-1">Plan propuesto</h3>
+        </div>
+        {editable && (
+          <div className="flex gap-2">
+            {dirty && (
+              <button onClick={guardar} disabled={guardando} className="btn-ghost text-xs">
+                {guardando ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            )}
+            <button onClick={onDescartar} className="btn-ghost text-xs">Descartar</button>
+            <button onClick={onAplicar} disabled={aplicando || dirty} className="btn-primary">
+              {aplicando ? 'Aplicando…' : 'Aplicar a la obra'}
+            </button>
+          </div>
+        )}
+        {borrador.estado === 'aplicado' && (
+          <span className="chip-olive text-xs">Aplicado {borrador.aplicado_at ? new Date(borrador.aplicado_at).toLocaleString('es-AR') : ''}</span>
+        )}
+        {borrador.estado === 'descartado' && <span className="chip-muted text-xs">Descartado</span>}
+      </div>
+
+      <div className="bg-bone-100/50 rounded-xl p-3 text-xs text-muted whitespace-pre-wrap">
+        <strong className="text-navy">Contexto:</strong> {borrador.prompt_input}
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Etapas ({etapas.length})</h4>
+        <div className="space-y-2">
+          {etapas.map((e, i) => (
+            <div key={i} className="border border-border rounded-lg p-3 grid md:grid-cols-12 gap-2 items-start">
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-4"
+                value={e.nombre}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, nombre: ev.target.value }; setEtapas(n); marcarDirty() }}
+                placeholder="Nombre"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                className="input !py-1.5 text-sm md:col-span-1"
+                value={e.nro_etapa ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, nro_etapa: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                title="Nro etapa"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.monto_contractual ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, monto_contractual: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                placeholder="Monto"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                step="0.1"
+                className="input !py-1.5 text-sm md:col-span-1"
+                value={e.porcentaje_avance ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, porcentaje_avance: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                title="% avance"
+              />
+              <input
+                disabled={!editable}
+                type="date"
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.fecha_estimada || ''}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, fecha_estimada: ev.target.value || null }; setEtapas(n); marcarDirty() }}
+              />
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.notas || ''}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, notas: ev.target.value }; setEtapas(n); marcarDirty() }}
+                placeholder="Notas"
+              />
+            </div>
+          ))}
+          {editable && (
+            <button
+              onClick={() => { setEtapas([...etapas, { nombre: '', nro_etapa: etapas.length, monto_contractual: 0, porcentaje_avance: 0 }]); marcarDirty() }}
+              className="btn-ghost text-xs"
+            >
+              + Agregar etapa
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Frentes ({frentes.length})</h4>
+        <div className="space-y-2">
+          {frentes.map((f, i) => (
+            <div key={i} className="border border-border rounded-lg p-3 grid md:grid-cols-12 gap-2 items-start">
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-4"
+                value={f.nombre}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, nombre: ev.target.value }; setFrentes(n); marcarDirty() }}
+                placeholder="Nombre del frente"
+              />
+              <select
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-3"
+                value={f.tipo || ''}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, tipo: ev.target.value || null }; setFrentes(n); marcarDirty() }}
+              >
+                <option value="">— tipo —</option>
+                {TIPO_FRENTE_OPTS.map(t => <option key={t}>{t}</option>)}
+              </select>
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-5"
+                value={f.notas || ''}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, notas: ev.target.value }; setFrentes(n); marcarDirty() }}
+                placeholder="Notas"
+              />
+            </div>
+          ))}
+          {editable && (
+            <button
+              onClick={() => { setFrentes([...frentes, { nombre: '', tipo: '' }]); marcarDirty() }}
+              className="btn-ghost text-xs"
+            >
+              + Agregar frente
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Materiales sugeridos ({materiales.length})</h4>
+        <p className="text-xs text-muted mb-2">
+          Listado informativo — no se crean automáticamente en /materiales. Te sirven como checklist para cargar después.
+        </p>
+        <div className="space-y-1.5">
+          {materiales.map((m, i) => (
+            <div key={i} className="text-xs flex items-center gap-2 py-1.5 border-b border-bone-200 last:border-0">
+              <span className="font-medium flex-1">{m.nombre}</span>
+              <span className="text-muted">{m.categoria}</span>
+              <span className="tabular-nums">{m.cantidad} {m.unidad}</span>
+              <span className="text-muted">{m.etapa}</span>
+            </div>
+          ))}
+          {materiales.length === 0 && <div className="text-xs text-muted">Sin materiales sugeridos.</div>}
+        </div>
+      </div>
+
+      {(notas || editable) && (
+        <div>
+          <h4 className="text-sm font-semibold mb-2">Notas generales</h4>
+          <textarea
+            disabled={!editable}
+            className="input min-h-[60px] text-sm"
+            value={notas}
+            onChange={ev => { setNotas(ev.target.value); marcarDirty() }}
+          />
+        </div>
+      )}
     </div>
   )
 }
