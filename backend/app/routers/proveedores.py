@@ -205,6 +205,35 @@ def historial_proveedor(
             ref_id=item.id,
         ))
 
+    # Pago directo: MovimientoObra tipo=EGRESO con proveedor_id=pid
+    # (sprint 23: cierra la conexión cliente↔proveedor también cuando el pago
+    # se cargó como Movimiento directo, sin pasar por RetiroMaterial).
+    q3 = db.query(models.MovimientoObra).filter(
+        models.MovimientoObra.proveedor_id == pid,
+        models.MovimientoObra.tipo == models.TipoMovimiento.EGRESO,
+    )
+    if desde:
+        q3 = q3.filter(models.MovimientoObra.fecha >= desde)
+    if hasta:
+        q3 = q3.filter(models.MovimientoObra.fecha <= hasta)
+    for mo in q3.all():
+        obra = db.query(models.Obra).filter(models.Obra.id == mo.obra_id).first()
+        es_negro = mo.legalidad == models.LegalidadMovimiento.negro if mo.legalidad else False
+        items.append(schemas.ProveedorHistorialItem(
+            fecha=mo.fecha,
+            tipo="pago_directo",
+            material_id=0,  # no aplica
+            material_nombre=mo.concepto[:100],
+            unidad="—",
+            cantidad=1,
+            precio_unitario=float(mo.monto),
+            subtotal=float(mo.monto),
+            en_negro=es_negro,
+            forma_pago=mo.medio_pago,
+            obra_destino_nombre=obra.codigo if obra else None,
+            ref_id=mo.id,
+        ))
+
     items.sort(key=lambda it: it.fecha, reverse=True)
     return items
 
