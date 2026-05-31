@@ -1,7 +1,7 @@
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from app.models import (
     UserRole, UserStatus, ObraStatus, ObraSalud, FrenteEstado,
     TaskStatus, EventoTipo, CanalCarga,
@@ -9,6 +9,9 @@ from app.models import (
     CategoriaEgreso, MedioPago, EstadoMovimiento, EstadoDevolucion,
     TipoComprobante, EstadoFiscal, TipoRetencion,
     RequerimientoEstado,
+    LegalidadMovimiento, CobroPagoEstado,
+    PlanObraEstado,
+    TicketOCREstado,
 )
 
 
@@ -97,14 +100,75 @@ class ClienteIn(BaseModel):
     regimen_fiscal_id: Optional[int] = None
     notas: Optional[str] = None
     activo: bool = True
+    # Sprint 22 — memoria
+    cbu: Optional[str] = None
+    alias_bancario: Optional[str] = None
+    condiciones_pago: Optional[str] = None
+    contacto_secundario: Optional[str] = None
+    preferencias: Optional[str] = None
 
 
 class ClienteOut(ClienteIn):
     id: int
     created_at: datetime
+    last_interaction_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+# ─── Sprint 22: detalle / memoria del cliente ───────────────────────────
+
+class ClienteNotaIn(BaseModel):
+    cliente_id: int
+    texto: str = Field(min_length=1, max_length=2000)
+    importante: bool = False
+
+
+class ClienteNotaOut(BaseModel):
+    id: int
+    cliente_id: int
+    autor_id: Optional[int] = None
+    texto: str
+    importante: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ClienteObraResumen(BaseModel):
+    """Una obra del cliente con sus números clave."""
+    id: int
+    codigo: str
+    nombre: str
+    estado: ObraStatus
+    monto_contrato: float = 0
+    fecha_inicio: Optional[date] = None
+    fecha_fin_estimada: Optional[date] = None
+    progreso: float = 0
+    # Sprint 21 — totales de la caja contable
+    ingresos_cobrado: float = 0
+    ingresos_pendiente: float = 0
+    saldo_obra: float = 0  # cobrado - pagado consolidado
+
+
+class ClienteResumenFinanciero(BaseModel):
+    """Agregado de todas las obras del cliente."""
+    monto_contratos_total: float = 0
+    ingresos_cobrado_total: float = 0
+    ingresos_pendiente_total: float = 0  # lo que el cliente NOS debe
+    egresos_pagado_total: float = 0
+    egresos_pendiente_total: float = 0   # lo que nosotros debemos por esta obra (proveedores)
+    obras_total: int = 0
+    obras_en_curso: int = 0
+    obras_finalizadas: int = 0
+
+
+class ClienteDetalleOut(ClienteOut):
+    obras: List[ClienteObraResumen] = []
+    resumen_financiero: ClienteResumenFinanciero
+    interacciones: List[ClienteNotaOut] = []  # log de notas (renombrado para no chocar con Cliente.notas string)
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -254,6 +318,13 @@ class MovimientoIn(BaseModel):
     estado: EstadoMovimiento = EstadoMovimiento.CONFIRMADO
     hoja_fisica: Optional[str] = None
     canal: CanalCarga = CanalCarga.web
+    # Sprint 21
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    fecha_cobro_pago: Optional[date] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: float = 0
 
 
 class MovimientoOut(BaseModel):
@@ -280,6 +351,13 @@ class MovimientoOut(BaseModel):
     canal: CanalCarga
     cargado_por: int
     created_at: datetime
+    # Sprint 21
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    fecha_cobro_pago: Optional[date] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: float = 0
 
     class Config:
         from_attributes = True
@@ -291,6 +369,48 @@ class FlujoCajaSemana(BaseModel):
     egresos: float
     saldo_semana: float
     saldo_acumulado: float
+
+
+# ─── Sprint 21: resumen contable blanco/negro por obra ───────────────────
+
+
+class FinanzasCajaResumen(BaseModel):
+    """Una caja (blanca o negra) desglosada por estado."""
+    ingresos_cobrado: float = 0
+    ingresos_pendiente: float = 0
+    egresos_pagado: float = 0
+    egresos_pendiente: float = 0
+    iva_total: float = 0       # solo aplica caja blanco
+    iibb_total: float = 0
+    gastos_banco_total: float = 0
+    neto_efectivo: float = 0   # cobrado - pagado (lo que tenés ya en mano)
+    saldo_compromiso: float = 0  # cobrado_pendiente - pagado_pendiente (lo que va a entrar/salir)
+
+
+class FinanzasObraResumen(BaseModel):
+    """Resumen contable de una obra con desglose por caja blanco/negro.
+
+    'lo que tenés' = neto_efectivo de las 2 cajas.
+    'lo que se debe' = saldo_compromiso (positivo a favor, negativo en contra).
+    """
+    obra_id: int
+    monto_contrato: float = 0
+    blanco: FinanzasCajaResumen
+    negro: FinanzasCajaResumen
+    # Consolidado
+    lo_que_tenes: float = 0
+    lo_que_se_debe: float = 0   # neto: positivo = a favor, negativo = a pagar
+    saldo_total: float = 0      # lo_que_tenes + lo_que_se_debe
+
+
+class FinanzasMovimientoUpdate(BaseModel):
+    """Patch parcial — usado por endpoints como marcar-cobrado/marcar-pagado."""
+    cobro_pago_estado: Optional[CobroPagoEstado] = None
+    fecha_cobro_pago: Optional[date] = None
+    legalidad: Optional[LegalidadMovimiento] = None
+    iva_pct: Optional[float] = None
+    iibb_pct: Optional[float] = None
+    gastos_banco: Optional[float] = None
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -640,6 +760,45 @@ class ProveedorOut(ProveedorIn):
         from_attributes = True
 
 
+# ─── Sprint 15: detalle del proveedor (materiales que vende + historial) ────
+
+
+class ProveedorMaterialOut(BaseModel):
+    """Material que un proveedor vende (resuelto desde Material.proveedor_id)."""
+    material_id: int
+    nombre: str
+    categoria: Optional[str] = None
+    unidad: str
+    precio_unitario: float
+    stock_actual: float = 0  # sum(deposito + en_obras)
+    pendiente_retiro: float = 0  # comprado_no_retirado para este proveedor
+
+
+class ProveedorHistorialItem(BaseModel):
+    """Item del historial del proveedor: una compra retirada (facturado) o un item
+    en un presupuesto (presupuestado).
+    """
+    fecha: date
+    tipo: str  # 'facturado' | 'presupuestado'
+    material_id: int
+    material_nombre: str
+    unidad: str
+    cantidad: float
+    precio_unitario: Optional[float] = None
+    subtotal: Optional[float] = None
+    en_negro: Optional[bool] = None  # solo aplica a facturado
+    forma_pago: Optional[MedioPago] = None  # solo facturado
+    obra_destino_nombre: Optional[str] = None  # solo facturado, si fue directo a obra
+    presupuesto_nombre: Optional[str] = None  # solo presupuestado
+    presupuesto_estado: Optional[str] = None  # solo presupuestado
+    ref_id: int  # id del RetiroMaterial o PresupuestoItem
+
+
+class ProveedorDetalleOut(ProveedorOut):
+    materiales_vendidos: List[ProveedorMaterialOut] = []
+    ultima_actividad: Optional[date] = None  # max(fecha facturado/presupuestado)
+
+
 class OrdenIn(BaseModel):
     obra_id: int
     frente_id: Optional[int] = None
@@ -773,3 +932,227 @@ class PermisosOut(BaseModel):
     secciones_bloqueadas: List[str]
     obras_visibles_ids: Optional[List[int]]  # None = ve todas
     secciones_catalogo: List[str]
+
+
+# ════════════════════════════════════════════════════════════════════
+# PLANIFICACION DE OBRA ASISTIDA (Sprint 24)
+# ════════════════════════════════════════════════════════════════════
+
+
+class PlanObraGenerarIn(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())  # permitir campo model_override
+    contexto: str = Field(min_length=10, max_length=4000)
+    model_override: Optional[str] = None
+
+
+class PlanObraEtapaPropuesta(BaseModel):
+    nombre: str
+    nro_etapa: int = 0
+    monto_contractual: float = 0
+    porcentaje_avance: float = 0
+    fecha_estimada: Optional[date] = None
+    notas: Optional[str] = None
+
+
+class PlanObraFrentePropuesto(BaseModel):
+    nombre: str
+    tipo: Optional[str] = None
+    notas: Optional[str] = None
+
+
+class PlanObraMaterialSugerido(BaseModel):
+    nombre: str
+    categoria: Optional[str] = None
+    unidad: str = "u"
+    cantidad: float = 0
+    etapa: Optional[str] = None
+
+
+class PlanObraResultado(BaseModel):
+    etapas: List[PlanObraEtapaPropuesta] = []
+    frentes: List[PlanObraFrentePropuesto] = []
+    materiales_sugeridos: List[PlanObraMaterialSugerido] = []
+    notas_generales: Optional[str] = None
+
+
+class PlanObraBorradorOut(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    id: int
+    obra_id: int
+    prompt_input: str
+    resultado: PlanObraResultado  # resultado_json deserializado
+    estado: PlanObraEstado
+    model_used: Optional[str] = None
+    created_by_id: Optional[int] = None
+    created_at: datetime
+    aplicado_at: Optional[datetime] = None
+
+
+class PlanObraEditIn(BaseModel):
+    """Para editar el resultado del borrador antes de aplicarlo."""
+    resultado: PlanObraResultado
+
+
+class PlanObraAplicarOut(BaseModel):
+    etapas_creadas: int
+    frentes_creados: int
+    materiales_sugeridos_count: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# CONSOLIDACIÓN BANCARIA (Sprint 23)
+# ════════════════════════════════════════════════════════════════════
+
+
+class MovimientoBancarioIn(BaseModel):
+    fecha: date
+    descripcion: str = Field(min_length=1, max_length=500)
+    debito: float = 0
+    credito: float = 0
+    saldo: Optional[float] = None
+
+
+class ExtractoIn(BaseModel):
+    banco: str = Field(min_length=1, max_length=100)
+    cuenta: Optional[str] = Field(default=None, max_length=60)
+    periodo_desde: Optional[date] = None
+    periodo_hasta: Optional[date] = None
+    archivo_nombre: Optional[str] = None
+    movimientos: List[MovimientoBancarioIn] = Field(default_factory=list)
+
+
+class MovimientoBancarioOut(BaseModel):
+    id: int
+    extracto_id: int
+    fecha: date
+    descripcion: str
+    debito: float
+    credito: float
+    saldo: Optional[float] = None
+    movimiento_obra_id: Optional[int] = None
+    conciliado_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractoOut(BaseModel):
+    id: int
+    banco: str
+    cuenta: Optional[str] = None
+    periodo_desde: Optional[date] = None
+    periodo_hasta: Optional[date] = None
+    archivo_nombre: Optional[str] = None
+    total_debe: float = 0
+    total_haber: float = 0
+    total_movs: int = 0
+    created_by_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractoDetalleOut(ExtractoOut):
+    movimientos: List[MovimientoBancarioOut] = []
+
+
+class MatchIn(BaseModel):
+    movimiento_obra_id: int
+
+
+class SugerenciaMatchOut(BaseModel):
+    movimiento_obra_id: int
+    obra_codigo: str
+    concepto: str
+    fecha: date
+    monto: float
+    tipo: TipoMovimiento
+    distancia_dias: int  # |fecha_mov_obra - fecha_mov_bancario|
+
+
+class MovimientoBancarioConSugerenciasOut(MovimientoBancarioOut):
+    sugerencias: List[SugerenciaMatchOut] = []
+
+
+class ConsolidacionResumen(BaseModel):
+    extracto_id: int
+    total_debe_extracto: float
+    total_haber_extracto: float
+    total_debe_obra_conciliado: float   # sum(monto) de EGRESO matcheados
+    total_haber_obra_conciliado: float  # sum(monto) de INGRESO matcheados
+    diferencia_debe: float   # total_debe_extracto - total_debe_obra_conciliado
+    diferencia_haber: float
+    movs_total: int
+    movs_conciliados: int
+    movs_sin_match: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# OCR DE TICKETS (Sprint 18)
+# ════════════════════════════════════════════════════════════════════
+
+
+class TicketOCRItem(BaseModel):
+    descripcion: Optional[str] = None
+    cantidad: Optional[float] = None
+    unidad: Optional[str] = None
+    precio_unitario: Optional[float] = None
+    subtotal: Optional[float] = None
+
+
+class TicketOCRResultado(BaseModel):
+    """Estructura del JSON devuelto por Claude Vision (todos opcionales — el
+    LLM puede no detectar algunos campos)."""
+    tipo_documento: Optional[str] = None
+    nro_comprobante: Optional[str] = None
+    punto_venta: Optional[int] = None
+    fecha_emision: Optional[date] = None
+    proveedor_nombre: Optional[str] = None
+    proveedor_cuit: Optional[str] = None
+    items: List[TicketOCRItem] = []
+    neto_gravado: Optional[float] = None
+    iva_21: Optional[float] = None
+    iva_105: Optional[float] = None
+    total: Optional[float] = None
+    notas: Optional[str] = None
+
+
+class TicketOCRSubirIn(BaseModel):
+    """Subir un ticket desde la web — toma URL o base64 + datos de Telegram opcionales."""
+    model_config = ConfigDict(protected_namespaces=())
+    image_url: Optional[str] = None
+    image_base64: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    telegram_message_id: Optional[str] = None
+    telegram_file_id: Optional[str] = None
+    model_override: Optional[str] = None
+
+
+class TicketOCROut(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    id: int
+    estado: TicketOCREstado
+    resultado: TicketOCRResultado
+    model_used: Optional[str] = None
+    error_msg: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    imagen_url_cached: Optional[str] = None
+    obra_id: Optional[int] = None
+    comprobante_id: Optional[int] = None
+    movimiento_obra_id: Optional[int] = None
+    created_by_id: Optional[int] = None
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None
+
+
+class TicketOCRConfirmarIn(BaseModel):
+    """Datos para confirmar el ticket y crear Comprobante + Movimiento."""
+    obra_id: int
+    proveedor_id: Optional[int] = None  # si null, intenta match automático
+    es_venta: bool = False  # default: comprobante recibido (egreso)
+    categoria_egreso: Optional[CategoriaEgreso] = CategoriaEgreso.MATERIALES
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    medio_pago: MedioPago = MedioPago.TRANSFERENCIA
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    notas_extra: Optional[str] = None

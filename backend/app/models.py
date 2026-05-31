@@ -104,6 +104,24 @@ class EstadoMovimiento(str, Enum):
     A_REVISAR = "A_REVISAR"
 
 
+# Sprint 21
+class LegalidadMovimiento(str, Enum):
+    """Caja 'blanco' (con factura, formal) o 'negro' (efectivo informal)."""
+    blanco = "blanco"
+    negro = "negro"
+
+
+class CobroPagoEstado(str, Enum):
+    """Estado de efectivización del movimiento.
+
+    Para INGRESO: pendiente → cobrado.
+    Para EGRESO:  pendiente → pagado.
+    """
+    pendiente = "pendiente"
+    cobrado = "cobrado"
+    pagado = "pagado"
+
+
 class EstadoDevolucion(str, Enum):
     PENDIENTE = "PENDIENTE"
     DEVUELTO_PARCIAL = "DEVUELTO_PARCIAL"
@@ -249,7 +267,12 @@ class RegimenFiscal(Base):
 
 
 class Cliente(Base):
-    """Cliente final de las obras. Define el régimen fiscal por defecto."""
+    """Cliente final de las obras. Define el régimen fiscal por defecto.
+
+    Sprint 22 — memoria: además de datos fiscales, guarda datos recurrentes
+    que se autocompletan al cargar comprobantes/movimientos (CBU, alias,
+    condiciones de pago) y un historial de interacciones via ClienteNota.
+    """
     __tablename__ = "clientes"
     id = Column(Integer, primary_key=True)
     is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")  # Sprint 12: scoping dual demo/real
@@ -263,11 +286,34 @@ class Cliente(Base):
     regimen_fiscal_id = Column(Integer, ForeignKey("regimenes_fiscales.id"))
     notas = Column(Text)
     activo = Column(Boolean, default=True)
+    # Sprint 22 — memoria del cliente
+    cbu = Column(String(30))  # CBU bancaria para transferencias
+    alias_bancario = Column(String(50))
+    condiciones_pago = Column(String(200))  # "30 días fecha factura", etc.
+    contacto_secundario = Column(String(200))  # nombre + teléfono libre
+    preferencias = Column(Text)  # observaciones recurrentes (preferencias de horario, contactos, etc.)
+    last_interaction_at = Column(DateTime, index=True)  # actualizado al crear obra/movimiento
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     regimen_fiscal = relationship("RegimenFiscal")
     obras = relationship("Obra", back_populates="cliente")
+    notas_cliente = relationship("ClienteNota", back_populates="cliente", cascade="all, delete-orphan")
+
+
+class ClienteNota(Base):
+    """Sprint 22 — Notas/log de interacciones del cliente con timestamp y autor."""
+    __tablename__ = "cliente_notas"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    cliente_id = Column(Integer, ForeignKey("clientes.id", ondelete="CASCADE"), nullable=False, index=True)
+    autor_id = Column(Integer, ForeignKey("users.id"))
+    texto = Column(Text, nullable=False)
+    importante = Column(Boolean, default=False, nullable=False, server_default="false")
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    cliente = relationship("Cliente", back_populates="notas_cliente")
+    autor = relationship("User", foreign_keys=[autor_id])
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -388,6 +434,20 @@ class MovimientoObra(Base):
     hoja_fisica = Column(String(100))  # "Hoja 15 - 16/03/26"
     canal = Column(SQLEnum(CanalCarga), default=CanalCarga.web, nullable=False)
     cargado_por = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # Sprint 21 — contabilidad blanco/negro por obra
+    legalidad = Column(
+        SQLEnum(LegalidadMovimiento), default=LegalidadMovimiento.blanco,
+        nullable=False, index=True, server_default="blanco",
+    )
+    cobro_pago_estado = Column(
+        SQLEnum(CobroPagoEstado), default=CobroPagoEstado.pendiente,
+        nullable=False, index=True, server_default="pendiente",
+    )
+    fecha_cobro_pago = Column(Date, index=True)  # cuándo se efectivizó (null = pendiente)
+    iva_pct = Column(Numeric(5, 4))  # 0.21 = 21% (solo blanco normalmente)
+    iibb_pct = Column(Numeric(5, 4))  # 0.03 = 3%
+    gastos_banco = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -833,7 +893,8 @@ class AgentAction(Base):
 SECCIONES = (
     "obras", "ordenes", "feed", "requerimientos",
     "cuadrillas", "materiales", "presupuestos", "proveedores",
-    "finanzas", "movimientos", "aportes", "comprobantes", "clientes", "socios",
+    "finanzas", "movimientos", "aportes", "comprobantes", "consolidacion", "clientes", "socios",
+    "tickets_ocr",  # Sprint 18
     "equipo", "mensajes",
 )
 
@@ -842,6 +903,141 @@ class RequerimientoEstado(str, Enum):
     """Sprint 17."""
     abierto = "abierto"
     resuelto = "resuelto"
+
+
+# Sprint 24 — Planificación de obra asistida
+class PlanObraEstado(str, Enum):
+    borrador = "borrador"
+    aplicado = "aplicado"
+    descartado = "descartado"
+
+
+class TicketOCREstado(str, Enum):
+    """Sprint 18 — ciclo de vida de un ticket subido por Telegram."""
+    pendiente = "pendiente"
+    confirmado = "confirmado"
+    rechazado = "rechazado"
+    error = "error"  # falló el parseo del LLM
+
+
+class TicketOCR(Base):
+    """Sprint 18 — Borrador de comprobante extraído por Claude Vision de una foto.
+
+    Workflow:
+    1. Usuario manda foto al bot de Telegram.
+    2. Bot descarga, llama a Claude Vision, persiste TicketOCR con resultado_json.
+    3. Bot responde con resumen + slash para confirmar/rechazar.
+    4. /confirmar <id> [obra=CODIGO] crea Comprobante + MovimientoObra reales.
+    5. estado pasa a 'confirmado' (o 'rechazado').
+    """
+    __tablename__ = "tickets_ocr"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+
+    # Origen Telegram
+    telegram_chat_id = Column(String(60), index=True)
+    telegram_message_id = Column(String(60))
+    telegram_file_id = Column(String(200))  # para re-descargar si hace falta
+    imagen_url_cached = Column(String(500))  # URL temporal de Telegram (~1h)
+
+    # OCR
+    resultado_json = Column(Text, nullable=False)  # estructura parseada por Vision
+    model_used = Column(String(60))  # "claude-sonnet-4-5" | "placeholder"
+    error_msg = Column(Text)  # si estado=error, el detalle
+
+    estado = Column(SQLEnum(TicketOCREstado), default=TicketOCREstado.pendiente, nullable=False, index=True)
+
+    # Confirmación: cuando estado='confirmado' se asigna obra + crea registros.
+    obra_id = Column(Integer, ForeignKey("obras.id"))
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))
+    movimiento_obra_id = Column(Integer, ForeignKey("movimientos_obra.id"))
+
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    confirmed_at = Column(DateTime)
+
+    obra = relationship("Obra")
+    comprobante = relationship("Comprobante", foreign_keys=[comprobante_id])
+    movimiento = relationship("MovimientoObra", foreign_keys=[movimiento_obra_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class Extracto(Base):
+    """Sprint 23 — Extracto bancario importado para conciliación.
+
+    Agrupa N MovimientoBancario. El usuario sube un CSV / pega texto,
+    el frontend lo parsea y manda al backend ya estructurado.
+    """
+    __tablename__ = "extractos"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    banco = Column(String(100), nullable=False)
+    cuenta = Column(String(60))  # alias o nro de cuenta
+    periodo_desde = Column(Date)
+    periodo_hasta = Column(Date)
+    archivo_nombre = Column(String(200))
+    total_debe = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
+    total_haber = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
+    total_movs = Column(Integer, default=0, nullable=False, server_default="0")
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    movimientos = relationship(
+        "MovimientoBancario", back_populates="extracto",
+        cascade="all, delete-orphan",
+    )
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class MovimientoBancario(Base):
+    """Sprint 23 — Cada línea del extracto.
+
+    Match con `movimiento_obra_id` (Sprint AB): un mov bancario se concilia
+    con un movimiento de obra concreto. Si queda sin match → es "no conciliado".
+    """
+    __tablename__ = "movimientos_bancarios"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    extracto_id = Column(Integer, ForeignKey("extractos.id", ondelete="CASCADE"), nullable=False, index=True)
+    fecha = Column(Date, nullable=False, index=True)
+    descripcion = Column(String(500), nullable=False)
+    debito = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")  # salida
+    credito = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")  # entrada
+    saldo = Column(Numeric(15, 2))  # opcional, si lo trae el extracto
+    hash_dedupe = Column(String(64), index=True)  # fecha+desc+monto, para evitar duplicados al reimportar
+    movimiento_obra_id = Column(Integer, ForeignKey("movimientos_obra.id"), index=True)
+    conciliado_at = Column(DateTime)
+    conciliado_by_id = Column(Integer, ForeignKey("users.id"))
+
+    extracto = relationship("Extracto", back_populates="movimientos")
+    movimiento_obra = relationship("MovimientoObra", foreign_keys=[movimiento_obra_id])
+    conciliado_by = relationship("User", foreign_keys=[conciliado_by_id])
+
+
+class PlanObraBorrador(Base):
+    """Sprint 24 — Borrador de plan de obra generado con IA.
+
+    Workflow:
+    1. Usuario abre `/obra/:id` tab Planificación, escribe contexto.
+    2. POST /api/obras/:id/plan/generar → llama a Claude, persiste borrador con resultado_json.
+    3. Frontend muestra preview, usuario puede editar resultado_json (mismo endpoint o PATCH).
+    4. POST /api/obras/:id/plan/:plan_id/aplicar → crea EtapaObra y Frente reales.
+    5. estado → aplicado (no se puede aplicar 2 veces; volver a generar crea otro borrador).
+    """
+    __tablename__ = "planes_obra_borrador"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    obra_id = Column(Integer, ForeignKey("obras.id", ondelete="CASCADE"), nullable=False, index=True)
+    prompt_input = Column(Text, nullable=False)  # contexto que pasó el usuario
+    resultado_json = Column(Text, nullable=False)  # JSON con etapas, frentes, materiales sugeridos
+    estado = Column(SQLEnum(PlanObraEstado), default=PlanObraEstado.borrador, nullable=False, index=True)
+    model_used = Column(String(60))  # ej "claude-sonnet-4-5"
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    aplicado_at = Column(DateTime)
+
+    obra = relationship("Obra")
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class Requerimiento(Base):

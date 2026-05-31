@@ -18,7 +18,13 @@ Cada sprint corresponde a un commit en `git log` y se documenta acá con el mism
 | 11 | Bot de Telegram (texto) + vinculación de usuarios | ✅ (suite 90/90) | [SPRINT_11_telegram_bot.md](SPRINT_11_telegram_bot.md) |
 | 13 | UI cleanup + permisos granulares (secciones + obras) | ✅ (suite 103/103) | [SPRINT_13_ui_permisos.md](SPRINT_13_ui_permisos.md) |
 | 14 | Stock: estados pedido/retirar/retirado + alertas + foto factura | ✅ (suite 133/133) | [SPRINT_14_stock_retiros.md](SPRINT_14_stock_retiros.md) |
+| 15 | Proveedores extendido (historial facturado/presupuestado + inactivos) | ✅ (suite 144/144) | [SPRINT_15_proveedores_detalle.md](SPRINT_15_proveedores_detalle.md) |
 | 17 | Requerimientos por obra (bot + web) | ✅ (suite 115/115) | [SPRINT_17_requerimientos.md](SPRINT_17_requerimientos.md) |
+| 18 | OCR de tickets con Claude Vision (Telegram foto → Comprobante + Movimiento) | ✅ (suite 220/220) | [SPRINT_18_ocr_tickets.md](SPRINT_18_ocr_tickets.md) |
+| 21 | Contabilidad blanco/negro por obra (2 cajas + estados + impuestos, sin gráficos) | ✅ (suite 160/160) | [SPRINT_21_blanco_negro.md](SPRINT_21_blanco_negro.md) |
+| 22 | Memoria de clientes (datos recurrentes + notas + resumen multi-obra) | ✅ (suite 174/174) | [SPRINT_22_memoria_clientes.md](SPRINT_22_memoria_clientes.md) |
+| 23 | Consolidación bancaria (importar extracto + match + diferencias) | ✅ (suite 202/202) | [SPRINT_23_consolidacion_bancaria.md](SPRINT_23_consolidacion_bancaria.md) |
+| 24 | Planificación de obra asistida por IA (borrador editable + aplicar) | ✅ (suite 189/189) | [SPRINT_24_planificacion_obra.md](SPRINT_24_planificacion_obra.md) |
 | 12 | Perfil demo dual (`is_demo` + scoping automático) | ✅ | — |
 | 20 | Deploy producción + dominio + handoff a Tomi | 🟡 en curso | [SPRINT_20_deploy_handoff.md](SPRINT_20_deploy_handoff.md) |
 

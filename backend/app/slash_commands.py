@@ -30,6 +30,9 @@ HELP = (
     "/stock [material]       - stock multi-ubicación (Sprint 9)\n"
     "/pendientes [dias]      - stock pendiente de retiro (Sprint 14)\n"
     "/req <obra> <mensaje>   - anota requerimiento/imprevisto (Sprint 17)\n"
+    "/pendientes_ocr         - tickets de OCR sin confirmar (Sprint 18)\n"
+    "/confirmar <id> <obra>  - confirma ticket OCR y crea movimiento\n"
+    "/rechazar <id>          - descarta ticket OCR\n"
     "/help                   - este menú"
 )
 
@@ -107,6 +110,12 @@ def handle_slash(text: str, user: models.User, db: Session) -> dict:
         return _cmd_req(args, user, db)
     if cmd == "pendientes":
         return _cmd_pendientes(args, db)
+    if cmd == "pendientes_ocr":
+        return _cmd_pendientes_ocr(db)
+    if cmd == "confirmar":
+        return _cmd_confirmar_ocr(args, user, db)
+    if cmd == "rechazar":
+        return _cmd_rechazar_ocr(args, user, db)
 
     return {
         "ok": False,
@@ -422,3 +431,85 @@ def _cmd_stock(args: list[str], db: Session) -> dict:
     if len(items) > 15:
         lines.append(f"  ...y {len(items) - 15} más")
     return {"ok": True, "reply": "\n".join(lines)}
+
+
+# ─── Sprint 18: OCR tickets ──────────────────────────────────────────
+
+
+def _cmd_pendientes_ocr(db: Session) -> dict:
+    tickets = db.query(models.TicketOCR).filter(
+        models.TicketOCR.estado == models.TicketOCREstado.pendiente,
+    ).order_by(models.TicketOCR.created_at.desc()).limit(15).all()
+    if not tickets:
+        return {"ok": True, "reply": "✅ No hay tickets de OCR pendientes."}
+    import json
+    lines = [f"🧾 Tickets OCR pendientes ({len(tickets)}):"]
+    for t in tickets:
+        try:
+            data = json.loads(t.resultado_json)
+        except Exception:
+            data = {}
+        nombre = data.get("proveedor_nombre") or "?"
+        total = data.get("total") or 0
+        nro = data.get("nro_comprobante") or "—"
+        lines.append(f"  • #{t.id} {nro} · {nombre[:30]} · ${total:.0f}")
+    lines.append("")
+    lines.append("Confirmar: /confirmar <id> <obra>")
+    lines.append("Rechazar:  /rechazar <id>")
+    return {"ok": True, "reply": "\n".join(lines), "count": len(tickets)}
+
+
+def _cmd_confirmar_ocr(args: list[str], user: models.User, db: Session) -> dict:
+    """`/confirmar <ticket_id> <obra_codigo_o_id>`"""
+    if len(args) < 2:
+        return {"ok": False, "reply": "Uso: /confirmar <ticket_id> <obra>"}
+    try:
+        tid = int(args[0])
+    except ValueError:
+        return {"ok": False, "reply": f"❌ '{args[0]}' no es un id válido"}
+    obra = _obra_by_ref(args[1], db)
+    if not obra:
+        return {"ok": False, "reply": f"❌ Obra '{args[1]}' no encontrada."}
+
+    t = db.query(models.TicketOCR).filter(models.TicketOCR.id == tid).first()
+    if not t:
+        return {"ok": False, "reply": f"❌ Ticket #{tid} no existe."}
+    if t.estado != models.TicketOCREstado.pendiente:
+        return {"ok": False, "reply": f"❌ Ticket #{tid} ya está {t.estado.value}."}
+
+    # Reusa la lógica del endpoint (POST /confirmar) construyendo el payload mínimo.
+    from app.routers.ocr_tickets import confirmar as _confirmar_endpoint
+    from app import schemas
+    data = schemas.TicketOCRConfirmarIn(obra_id=obra.id)
+    try:
+        out = _confirmar_endpoint(tid, data, db, user)  # type: ignore
+    except Exception as e:
+        return {"ok": False, "reply": f"❌ Error al confirmar: {e}"}
+
+    return {
+        "ok": True,
+        "reply": (
+            f"✅ Ticket #{tid} confirmado en {obra.codigo}.\n"
+            f"  Comprobante #{out.comprobante_id} · Movimiento #{out.movimiento_obra_id}\n"
+            f"+5 XP"
+        ),
+        "ticket_id": tid,
+        "obra_id": obra.id,
+    }
+
+
+def _cmd_rechazar_ocr(args: list[str], user: models.User, db: Session) -> dict:
+    if len(args) < 1:
+        return {"ok": False, "reply": "Uso: /rechazar <ticket_id>"}
+    try:
+        tid = int(args[0])
+    except ValueError:
+        return {"ok": False, "reply": f"❌ '{args[0]}' no es un id válido"}
+    t = db.query(models.TicketOCR).filter(models.TicketOCR.id == tid).first()
+    if not t:
+        return {"ok": False, "reply": f"❌ Ticket #{tid} no existe."}
+    if t.estado not in (models.TicketOCREstado.pendiente, models.TicketOCREstado.error):
+        return {"ok": False, "reply": f"❌ Ticket #{tid} ya está {t.estado.value}."}
+    t.estado = models.TicketOCREstado.rechazado
+    db.commit()
+    return {"ok": True, "reply": f"🗑 Ticket #{tid} descartado."}

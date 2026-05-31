@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, Building2, Mail, Phone, Hash, Loader2, Check, Trash2, Edit3 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, X, Building2, Mail, Phone, Hash, Loader2, Check, Trash2, Edit3, ExternalLink } from 'lucide-react'
 import api from '../utils/api'
 
 const TIPOS = [
@@ -10,6 +11,7 @@ const TIPOS = [
 ]
 
 export default function Clientes() {
+  const nav = useNavigate()
   const [clientes, setClientes] = useState([])
   const [obras, setObras] = useState([])
   const [regimenes, setRegimenes] = useState([])
@@ -88,6 +90,7 @@ export default function Clientes() {
               cliente={c}
               obras={obrasPorCliente(c.id)}
               regimenes={regimenes}
+              onOpen={() => nav(`/clientes/${c.id}`)}
               onEdit={() => setEditing(c)}
             />
           ))}
@@ -110,11 +113,11 @@ function PillBtn({ active, onClick, children }) {
   )
 }
 
-function ClienteCard({ cliente, obras, regimenes, onEdit }) {
+function ClienteCard({ cliente, obras, regimenes, onOpen, onEdit }) {
   const tipoInfo = TIPOS.find(t => t.value === cliente.tipo)
   const regimen = regimenes.find(r => r.id === cliente.regimen_fiscal_id)
   return (
-    <div onClick={onEdit} className="card card-hover cursor-pointer p-6 group">
+    <div onClick={onOpen} className="card card-hover cursor-pointer p-6 group">
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1 min-w-0">
           <div className="text-[10px] uppercase tracking-[0.18em] text-olive-700 font-semibold mb-1">
@@ -125,7 +128,16 @@ function ClienteCard({ cliente, obras, regimenes, onEdit }) {
             <p className="text-[11px] text-muted truncate">{cliente.razon_social}</p>
           )}
         </div>
-        <Edit3 size={14} className="text-muted/40 group-hover:text-navy transition shrink-0"/>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit() }}
+            title="Editar"
+            className="p-1.5 text-muted/40 hover:text-navy transition rounded"
+          >
+            <Edit3 size={13}/>
+          </button>
+          <ExternalLink size={13} className="text-muted/40 group-hover:text-navy transition"/>
+        </div>
       </div>
 
       <div className="space-y-1.5 text-[12px] text-navy/80">
@@ -163,6 +175,12 @@ function ClienteModal({ cliente, regimenes, onClose, onSaved }) {
   const [direccion, setDireccion] = useState(cliente?.direccion || '')
   const [notas, setNotas] = useState(cliente?.notas || '')
   const [activo, setActivo] = useState(cliente?.activo ?? true)
+  // Sprint 22 — memoria
+  const [cbu, setCbu] = useState(cliente?.cbu || '')
+  const [aliasBancario, setAliasBancario] = useState(cliente?.alias_bancario || '')
+  const [condicionesPago, setCondicionesPago] = useState(cliente?.condiciones_pago || '')
+  const [contactoSecundario, setContactoSecundario] = useState(cliente?.contacto_secundario || '')
+  const [preferencias, setPreferencias] = useState(cliente?.preferencias || '')
   const [submitting, setSubmitting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
@@ -184,6 +202,11 @@ function ClienteModal({ cliente, regimenes, onClose, onSaved }) {
         direccion: direccion.trim() || null,
         notas: notas.trim() || null,
         activo,
+        cbu: cbu.trim() || null,
+        alias_bancario: aliasBancario.trim() || null,
+        condiciones_pago: condicionesPago.trim() || null,
+        contacto_secundario: contactoSecundario.trim() || null,
+        preferencias: preferencias.trim() || null,
       }
       if (isNew) await api.post('/api/clientes', payload)
       else await api.put(`/api/clientes/${cliente.id}`, payload)
@@ -260,6 +283,30 @@ function ClienteModal({ cliente, regimenes, onClose, onSaved }) {
             <div className="col-span-2">
               <Field label="Notas">
                 <textarea className="input-base min-h-[60px]" value={notas} onChange={e => setNotas(e.target.value)}/>
+              </Field>
+            </div>
+
+            {/* Sprint 22 — memoria del cliente */}
+            <div className="col-span-2 pt-3 border-t border-border/60">
+              <div className="text-[10px] uppercase tracking-[0.18em] text-olive-700 font-semibold mb-2">
+                Datos recurrentes (memoria)
+              </div>
+            </div>
+            <Field label="CBU">
+              <input className="input-base" value={cbu} onChange={e => setCbu(e.target.value)} placeholder="2850300040094..."/>
+            </Field>
+            <Field label="Alias bancario">
+              <input className="input-base" value={aliasBancario} onChange={e => setAliasBancario(e.target.value)} placeholder="mi.alias.banco"/>
+            </Field>
+            <Field label="Condiciones de pago">
+              <input className="input-base" value={condicionesPago} onChange={e => setCondicionesPago(e.target.value)} placeholder="30 días fecha factura"/>
+            </Field>
+            <Field label="Contacto secundario">
+              <input className="input-base" value={contactoSecundario} onChange={e => setContactoSecundario(e.target.value)} placeholder="Juan +5491..."/>
+            </Field>
+            <div className="col-span-2">
+              <Field label="Preferencias / observaciones recurrentes">
+                <textarea className="input-base min-h-[60px]" value={preferencias} onChange={e => setPreferencias(e.target.value)} placeholder="Prefiere reuniones por la mañana. Suele aprobar etapas los lunes."/>
               </Field>
             </div>
             {!isNew && (

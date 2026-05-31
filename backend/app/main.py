@@ -26,7 +26,7 @@ from app.routers import (
     ordenes, eventos, dashboard, whatsapp, agent,
     clientes, regimenes_fiscales, etapas, movimientos, aportes, comprobantes,
     notifications, approval, socios, stock, presupuestos, telegram,
-    requerimientos,
+    requerimientos, plan_obra, consolidacion, ocr_tickets,
 )
 
 Base.metadata.create_all(bind=engine)
@@ -50,11 +50,14 @@ ROUTERS = [
     cuadrillas, materiales, proveedores, ordenes, eventos,
     dashboard, whatsapp, agent, notifications, approval, socios,
     stock, presupuestos, telegram,
-    requerimientos,
+    requerimientos, plan_obra, consolidacion, ocr_tickets,
 ]
 
 for r in ROUTERS:
     app.include_router(r.router)
+
+# Sprint 23: router secundario (mismo módulo, prefijo distinto)
+app.include_router(consolidacion.mov_router)
 
 
 @app.get("/health")

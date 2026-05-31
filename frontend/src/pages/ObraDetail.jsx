@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft, MapPin, Users, Package, Activity, AlertCircle,
   Calendar, DollarSign, Plus, Check, Clock, ArrowRight, X, Loader2, Layers,
@@ -89,7 +89,18 @@ export default function ObraDetail() {
               <p className="text-muted text-lg mb-2 flex items-center gap-2">
                 <MapPin size={14}/> {obra.ciudad || obra.direccion}
               </p>
-              {data?.cliente_nombre && <p className="text-muted text-sm mb-6">Cliente · <span className="text-navy">{data.cliente_nombre}</span></p>}
+              {data?.cliente_nombre && (
+                <p className="text-muted text-sm mb-6">
+                  Cliente ·{' '}
+                  {obra.cliente_id ? (
+                    <Link to={`/clientes/${obra.cliente_id}`} className="text-navy hover:underline">
+                      {data.cliente_nombre}
+                    </Link>
+                  ) : (
+                    <span className="text-navy">{data.cliente_nombre}</span>
+                  )}
+                </p>
+              )}
               {obra.descripcion && <p className="text-navy/80 text-base leading-relaxed max-w-xl mb-8">{obra.descripcion}</p>}
 
               <div className="inline-flex items-center gap-2 bg-white border border-border rounded-full px-4 py-2 mb-8">
@@ -134,6 +145,7 @@ export default function ObraDetail() {
         <div className="px-8 max-w-[1400px] mx-auto flex gap-1 overflow-x-auto">
           {[
             { v: 'overview', l: 'Resumen' },
+            { v: 'planificacion', l: `Planificación IA` },
             { v: 'finanzas', l: `Finanzas` },
             { v: 'etapas', l: `Etapas` },
             { v: 'frentes', l: `Frentes` },
@@ -159,230 +171,18 @@ export default function ObraDetail() {
         {tab === 'ordenes' && <OrdenesTab ordenes={ordenes} obraId={id} reload={load}/>}
         {tab === 'eventos' && <EventosTab eventos={eventos} obraId={id} reload={load}/>}
         {tab === 'requerimientos' && <RequerimientosTab obraId={id} obraCodigo={obra?.codigo}/>}
+        {tab === 'planificacion' && <PlanificacionTab obraId={id} obra={obra} onPlanAplicado={load}/>}
       </div>
     </div>
   )
 }
 
-// ─────────────────────────────────────────────────────────────────
-// Finanzas tab (Sprint 3 · T8 + T9 + T10)
-// ─────────────────────────────────────────────────────────────────
+// Sprint 21 — Finanzas tab: 2 cajas (blanco / negro) + consolidado, sin graficos.
 
 function FinanzasTab({ obraId, dashboard }) {
-  const [flujo, setFlujo] = useState([])
-  const [proyectado, setProyectado] = useState([])
-  const [descalce, setDescalce] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [horizonte, setHorizonte] = useState(90)
-
-  useEffect(() => {
-    setLoading(true)
-    Promise.all([
-      api.get(`/api/movimientos/obra/${obraId}/flujo-caja`).catch(() => ({ data: [] })),
-      api.get(`/api/movimientos/obra/${obraId}/flujo-proyectado`, { params: { horizonte_dias: horizonte } }).catch(() => ({ data: [] })),
-      api.get(`/api/movimientos/descalce-fiscal`, { params: { obra_id: obraId } }).catch(() => ({ data: [] })),
-    ]).then(([f, p, d]) => {
-      setFlujo(f.data); setProyectado(p.data)
-      setDescalce(Array.isArray(d.data) && d.data.length > 0 ? d.data[0] : null)
-      setLoading(false)
-    })
-  }, [obraId, horizonte])
-
-  const fmtMoney = (n) => {
-    if (n == null) return '$0'
-    const sign = n < 0 ? '-' : ''
-    const abs = Math.abs(n)
-    if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`
-    if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}k`
-    return `${sign}$${Math.round(abs)}`
-  }
-
-  if (loading) return <div className="card p-10 text-center text-muted text-sm">Cargando flujo...</div>
-
-  return (
-    <div className="space-y-8">
-      {/* Big numbers de obra */}
-      <section className="grid md:grid-cols-4 gap-4">
-        <BigStat label="Contrato" value={fmtMoney(parseFloat(dashboard?.monto_contrato || 0))}/>
-        <BigStat label="Ingresos" value={fmtMoney(dashboard?.total_ingresos || 0)}/>
-        <BigStat label="Egresos" value={fmtMoney(dashboard?.total_egresos || 0)}/>
-        <BigStat label="Saldo" value={fmtMoney(dashboard?.saldo || 0)}/>
-      </section>
-
-      {/* Flujo de caja semanal real */}
-      <section>
-        <div className="mb-4">
-          <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-olive-700 mb-1">Flujo de caja real</h2>
-          <p className="text-2xl font-semibold tracking-tight text-navy">Movimientos agrupados por semana.</p>
-        </div>
-        {flujo.length === 0 ? (
-          <Empty txt="Sin movimientos registrados aún."/>
-        ) : (
-          <FlujoChart data={flujo} fmtMoney={fmtMoney}/>
-        )}
-      </section>
-
-      {/* Flujo proyectado */}
-      <section>
-        <div className="flex items-end justify-between mb-4">
-          <div>
-            <h2 className="text-[11px] uppercase tracking-[0.2em] font-semibold text-olive-700 mb-1">Flujo proyectado</h2>
-            <p className="text-2xl font-semibold tracking-tight text-navy">Cheques a vencer + etapas estimadas.</p>
-          </div>
-          <select
-            value={horizonte}
-            onChange={e => setHorizonte(Number(e.target.value))}
-            className="rounded-full px-4 py-2 text-[12px] bg-bone-100 text-navy hover:bg-bone-200/70 transition focus:outline-none"
-          >
-            <option value="30">Próximos 30 días</option>
-            <option value="60">Próximos 60 días</option>
-            <option value="90">Próximos 90 días</option>
-            <option value="180">Próximos 6 meses</option>
-            <option value="365">Próximos 12 meses</option>
-          </select>
-        </div>
-        {proyectado.length === 0 ? (
-          <Empty txt="Nada proyectado en el horizonte seleccionado."/>
-        ) : (
-          <FlujoProyectadoTable items={proyectado} fmtMoney={fmtMoney}/>
-        )}
-      </section>
-
-      {/* Descalce fiscal por obra */}
-      {descalce && descalce.tiene_descalce && (
-        <section>
-          <div className="card p-6 border-2 border-warn/30 bg-warn/5">
-            <div className="flex items-start gap-3">
-              <AlertCircle size={20} className="text-leather shrink-0 mt-0.5"/>
-              <div className="flex-1">
-                <h3 className="text-[14px] font-semibold tracking-tight text-navy mb-1">Descalce fiscal detectado</h3>
-                <p className="text-[13px] text-navy/80 mb-3">
-                  Esta obra ({descalce.tipo_facturacion}) tiene <strong>{fmtMoney(descalce.egresos_con_comprobante)}</strong> de egresos con factura
-                  pero solo <strong>{fmtMoney(descalce.ingresos_con_comprobante)}</strong> de ingresos con factura.
-                </p>
-                <div className="text-2xl font-bold text-leather tracking-tight">
-                  {fmtMoney(descalce.descalce)} <span className="text-[12px] font-normal text-muted">de descalce (crédito fiscal IVA pendiente)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-    </div>
-  )
+  return <FinanzasBlancoNegroTab obraId={obraId} dashboard={dashboard}/>
 }
 
-function FlujoChart({ data, fmtMoney }) {
-  if (data.length === 0) return null
-
-  // Layout
-  const W = 800, H = 280, PAD_L = 60, PAD_R = 30, PAD_T = 30, PAD_B = 40
-  const innerW = W - PAD_L - PAD_R
-  const innerH = H - PAD_T - PAD_B
-
-  const maxBar = Math.max(...data.map(d => Math.max(d.ingresos, d.egresos)), 1)
-  const saldos = data.map(d => d.saldo_acumulado)
-  const minSaldo = Math.min(0, ...saldos)
-  const maxSaldo = Math.max(0, ...saldos)
-  const rangeSaldo = (maxSaldo - minSaldo) || 1
-
-  const barW = innerW / data.length / 3  // 2 barras lado a lado + gap
-  const slot = innerW / data.length
-
-  const yBar = (v) => PAD_T + innerH - (v / maxBar) * innerH * 0.7  // barras ocupan 70% vertical
-  const yLine = (v) => PAD_T + innerH - ((v - minSaldo) / rangeSaldo) * innerH
-
-  const linePath = data.map((d, i) => {
-    const x = PAD_L + i * slot + slot / 2
-    const y = yLine(d.saldo_acumulado)
-    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`
-  }).join(' ')
-
-  const fmtSemana = (s) => {
-    const d = new Date(s)
-    return `${d.getDate()}/${d.getMonth() + 1}`
-  }
-
-  return (
-    <div className="card p-6 overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[700px]" preserveAspectRatio="xMinYMid meet">
-        {/* Grid horizontal */}
-        {[0, 0.25, 0.5, 0.75, 1].map((p, i) => {
-          const y = PAD_T + innerH * p
-          const v = maxBar * (1 - p)
-          return (
-            <g key={i}>
-              <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke="currentColor" className="text-border" strokeDasharray="2 4" opacity="0.5"/>
-              <text x={PAD_L - 8} y={y + 3} textAnchor="end" className="text-muted" fontSize="10">{fmtMoney(v)}</text>
-            </g>
-          )
-        })}
-
-        {/* Linea cero del saldo (si min<0) */}
-        {minSaldo < 0 && (
-          <line x1={PAD_L} y1={yLine(0)} x2={W - PAD_R} y2={yLine(0)} stroke="currentColor" className="text-leather" strokeDasharray="3 3" opacity="0.5"/>
-        )}
-
-        {/* Barras */}
-        {data.map((d, i) => {
-          const xCenter = PAD_L + i * slot + slot / 2
-          return (
-            <g key={i}>
-              {/* Ingresos (olive) */}
-              <rect
-                x={xCenter - barW - 1}
-                y={yBar(d.ingresos)}
-                width={barW}
-                height={Math.max(0, PAD_T + innerH - yBar(d.ingresos))}
-                fill="#3D4F1E"
-                rx="2"
-              >
-                <title>Semana {fmtSemana(d.semana)} · Ingresos {fmtMoney(d.ingresos)}</title>
-              </rect>
-              {/* Egresos (leather) */}
-              <rect
-                x={xCenter + 1}
-                y={yBar(d.egresos)}
-                width={barW}
-                height={Math.max(0, PAD_T + innerH - yBar(d.egresos))}
-                fill="#6B4C30"
-                rx="2"
-              >
-                <title>Semana {fmtSemana(d.semana)} · Egresos {fmtMoney(d.egresos)}</title>
-              </rect>
-              {/* Label X */}
-              <text x={xCenter} y={H - PAD_B + 18} textAnchor="middle" className="text-muted" fontSize="10">{fmtSemana(d.semana)}</text>
-            </g>
-          )
-        })}
-
-        {/* Línea saldo acumulado */}
-        <path d={linePath} fill="none" stroke="#1E2B5E" strokeWidth="2"/>
-        {data.map((d, i) => {
-          const x = PAD_L + i * slot + slot / 2
-          const y = yLine(d.saldo_acumulado)
-          return (
-            <circle key={i} cx={x} cy={y} r="3" fill="#1E2B5E">
-              <title>Semana {fmtSemana(d.semana)} · Saldo acumulado {fmtMoney(d.saldo_acumulado)}</title>
-            </circle>
-          )
-        })}
-      </svg>
-
-      <div className="flex items-center gap-5 mt-4 text-[11px]">
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded bg-[#3D4F1E]"/> Ingresos
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded bg-[#6B4C30]"/> Egresos
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-4 h-0.5 bg-navy"/> Saldo acumulado
-        </div>
-      </div>
-    </div>
-  )
-}
 
 function FlujoProyectadoTable({ items, fmtMoney }) {
   // Calcular saldo acumulado proyectado
@@ -1156,6 +956,561 @@ function Stat({ label, value, accent }) {
     <div className="card p-4">
       <div className="text-[10px] tracking-[0.18em] uppercase text-muted font-semibold mb-1">{label}</div>
       <div className={`hero-title text-3xl ${accent || ''}`}>{value}</div>
+    </div>
+  )
+}
+
+// ─── Sprint 21: contabilidad blanco/negro por obra ──────────────────────
+
+const fmtMoneyArs = (n) => {
+  if (n == null) return '$0'
+  const sign = n < 0 ? '-' : ''
+  const abs = Math.abs(n)
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(2)}M`
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}k`
+  return `${sign}$${Math.round(abs)}`
+}
+
+const MEDIO_PAGO_LABEL = {
+  EFECTIVO: 'Efectivo',
+  TRANSFERENCIA: 'Transferencia',
+  CHEQUE_PROPIO: 'Cheque propio',
+  CHEQUE_TERCERO: 'Cheque 3°',
+  DEPOSITO_BANCARIO: 'Depósito',
+}
+
+function FinanzasBlancoNegroTab({ obraId, dashboard }) {
+  const [caja, setCaja] = useState('blanco')
+  const [resumen, setResumen] = useState(null)
+  const [movs, setMovs] = useState([])
+  const [proyectado, setProyectado] = useState([])
+  const [descalce, setDescalce] = useState(null)
+  const [horizonte, setHorizonte] = useState(90)
+  const [loading, setLoading] = useState(true)
+
+  const load = () => {
+    setLoading(true)
+    return Promise.all([
+      api.get(`/api/movimientos/obra/${obraId}/resumen-finanzas`),
+      api.get(`/api/movimientos`, { params: { obra_id: obraId, limit: 500 } }),
+      api.get(`/api/movimientos/obra/${obraId}/flujo-proyectado`, { params: { horizonte_dias: horizonte } }).catch(() => ({ data: [] })),
+      api.get(`/api/movimientos/descalce-fiscal`, { params: { obra_id: obraId } }).catch(() => ({ data: [] })),
+    ]).then(([r, m, p, d]) => {
+      setResumen(r.data)
+      setMovs(m.data)
+      setProyectado(p.data)
+      setDescalce(Array.isArray(d.data) && d.data.length > 0 ? d.data[0] : null)
+      setLoading(false)
+    })
+  }
+  useEffect(() => { load() }, [obraId, horizonte])
+
+  if (loading || !resumen) return <div className="card p-10 text-center text-muted text-sm">Cargando…</div>
+
+  const movsCaja = caja === 'consolidado' ? movs : movs.filter(m => m.legalidad === caja)
+  const cajaResumen = caja === 'consolidado' ? null : resumen[caja]
+
+  const marcarCobrado = async (mid, tipo) => {
+    const nuevo = tipo === 'INGRESO' ? 'cobrado' : 'pagado'
+    await api.patch(`/api/movimientos/${mid}/finanzas`, { cobro_pago_estado: nuevo })
+    load()
+  }
+  const marcarPendiente = async (mid) => {
+    await api.patch(`/api/movimientos/${mid}/finanzas`, { cobro_pago_estado: 'pendiente' })
+    load()
+  }
+  const cambiarLegalidad = async (mid, actual) => {
+    const nueva = actual === 'blanco' ? 'negro' : 'blanco'
+    await api.patch(`/api/movimientos/${mid}/finanzas`, { legalidad: nueva })
+    load()
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="grid md:grid-cols-4 gap-4">
+        <BigStat label="Contrato" value={fmtMoneyArs(resumen.monto_contrato)}/>
+        <BigStat label="Lo que tenés" value={fmtMoneyArs(resumen.lo_que_tenes)} sub="cobrado − pagado"/>
+        <BigStat label="Lo que se debe" value={fmtMoneyArs(resumen.lo_que_se_debe)} sub="por cobrar − por pagar"/>
+        <BigStat label="Saldo total" value={fmtMoneyArs(resumen.saldo_total)}/>
+      </section>
+
+      <div className="flex gap-1.5 text-sm">
+        {[
+          { v: 'blanco', l: 'Blanco', stats: resumen.blanco },
+          { v: 'negro', l: 'Negro', stats: resumen.negro },
+          { v: 'consolidado', l: 'Consolidado' },
+        ].map(t => (
+          <button
+            key={t.v}
+            onClick={() => setCaja(t.v)}
+            className={`px-4 py-2 rounded-xl transition font-medium ${
+              caja === t.v ? 'bg-navy text-bone' : 'text-navy/65 hover:bg-bone-200/60'
+            }`}
+          >
+            {t.l}
+            {t.stats && (
+              <span className="ml-2 text-[11px] opacity-70">{fmtMoneyArs(t.stats.neto_efectivo)}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {cajaResumen && (
+        <section className="grid md:grid-cols-4 gap-3">
+          <Stat label="Cobrado" value={fmtMoneyArs(cajaResumen.ingresos_cobrado)} accent="text-olive"/>
+          <Stat label="Pagado" value={fmtMoneyArs(cajaResumen.egresos_pagado)} accent="text-leather"/>
+          <Stat label="Por cobrar" value={fmtMoneyArs(cajaResumen.ingresos_pendiente)}/>
+          <Stat label="Por pagar" value={fmtMoneyArs(cajaResumen.egresos_pendiente)}/>
+          {caja === 'blanco' && (
+            <>
+              <Stat label="IVA total" value={fmtMoneyArs(cajaResumen.iva_total)}/>
+              <Stat label="IIBB total" value={fmtMoneyArs(cajaResumen.iibb_total)}/>
+              <Stat label="Gastos banco" value={fmtMoneyArs(cajaResumen.gastos_banco_total)}/>
+              <Stat label="Neto efectivo" value={fmtMoneyArs(cajaResumen.neto_efectivo)}/>
+            </>
+          )}
+        </section>
+      )}
+
+      <section className="card overflow-hidden">
+        <table className="w-full text-[12px]">
+          <thead>
+            <tr className="bg-bone-100/50 text-muted uppercase text-[10px] tracking-wide">
+              <th className="text-left px-3 py-3 font-semibold">Fecha</th>
+              <th className="text-left px-3 py-3 font-semibold">Concepto</th>
+              {caja === 'consolidado' && <th className="text-left px-3 py-3 font-semibold">Caja</th>}
+              <th className="text-left px-3 py-3 font-semibold">Medio</th>
+              <th className="text-right px-3 py-3 font-semibold">Monto</th>
+              <th className="text-left px-3 py-3 font-semibold">Estado</th>
+              <th className="text-right px-3 py-3 font-semibold">Acciones</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/50">
+            {movsCaja.map(m => {
+              const isIng = m.tipo === 'INGRESO'
+              const cobrado = m.cobro_pago_estado === 'cobrado' || m.cobro_pago_estado === 'pagado'
+              return (
+                <tr key={m.id} className="hover:bg-bone-100/30 transition">
+                  <td className="px-3 py-2.5 whitespace-nowrap text-navy/80">
+                    {new Date(m.fecha).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                  </td>
+                  <td className="px-3 py-2.5 max-w-xs truncate" title={m.concepto}>{m.concepto}</td>
+                  {caja === 'consolidado' && (
+                    <td className="px-3 py-2.5">
+                      <span className={m.legalidad === 'blanco' ? 'chip-olive text-[10px]' : 'chip-danger text-[10px]'}>
+                        {m.legalidad}
+                      </span>
+                    </td>
+                  )}
+                  <td className="px-3 py-2.5 text-muted">{MEDIO_PAGO_LABEL[m.medio_pago] || m.medio_pago}</td>
+                  <td className={`px-3 py-2.5 text-right font-mono font-semibold ${isIng ? 'text-olive-700' : 'text-leather'}`}>
+                    {isIng ? '+' : '−'}{fmtMoneyArs(Number(m.monto))}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {cobrado ? (
+                      <span className="chip-olive text-[10px]">{m.cobro_pago_estado}{m.fecha_cobro_pago ? ` · ${m.fecha_cobro_pago}` : ''}</span>
+                    ) : (
+                      <span className="chip-warn text-[10px]">pendiente</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                    {cobrado ? (
+                      <button onClick={() => marcarPendiente(m.id)} className="btn-ghost text-[11px]" title="Volver a pendiente">
+                        <Clock size={10}/> Reabrir
+                      </button>
+                    ) : (
+                      <button onClick={() => marcarCobrado(m.id, m.tipo)} className="btn-ghost text-[11px]">
+                        <Check size={10}/> {isIng ? 'Cobrado' : 'Pagado'}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => cambiarLegalidad(m.id, m.legalidad)}
+                      className="btn-ghost text-[11px] ml-1"
+                      title="Cambiar blanco/negro"
+                    >
+                      ⇄
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+            {movsCaja.length === 0 && (
+              <tr>
+                <td colSpan={caja === 'consolidado' ? 7 : 6} className="px-4 py-8 text-center text-muted">
+                  Sin movimientos en esta caja.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      {descalce && descalce.tiene_descalce && (
+        <section className="card p-5 border-2 border-warn/30 bg-warn/5">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="text-leather shrink-0 mt-0.5"/>
+            <div className="flex-1">
+              <h3 className="font-semibold text-navy mb-1">Descalce fiscal detectado</h3>
+              <p className="text-[13px] text-navy/80 mb-2">
+                Esta obra ({descalce.tipo_facturacion}) tiene <strong>{fmtMoneyArs(descalce.egresos_con_comprobante)}</strong> de egresos con factura
+                pero solo <strong>{fmtMoneyArs(descalce.ingresos_con_comprobante)}</strong> de ingresos con factura.
+              </p>
+              <div className="text-xl font-bold text-leather">{fmtMoneyArs(descalce.descalce)}</div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section>
+        <div className="flex items-end justify-between mb-3">
+          <h2 className="text-sm font-semibold text-navy">Flujo proyectado</h2>
+          <select
+            value={horizonte}
+            onChange={e => setHorizonte(Number(e.target.value))}
+            className="input !py-1.5 !text-xs !w-auto"
+          >
+            <option value="30">Próximos 30 días</option>
+            <option value="60">Próximos 60 días</option>
+            <option value="90">Próximos 90 días</option>
+            <option value="180">Próximos 6 meses</option>
+            <option value="365">Próximos 12 meses</option>
+          </select>
+        </div>
+        {proyectado.length === 0 ? (
+          <Empty txt="Nada proyectado en el horizonte seleccionado."/>
+        ) : (
+          <FlujoProyectadoTable items={proyectado} fmtMoney={fmtMoneyArs}/>
+        )}
+      </section>
+    </div>
+  )
+}
+
+// ─── Sprint 24: Planificación de obra asistida por IA ──────────────────
+
+const TIPO_FRENTE_OPTS = ['estructura', 'mamposteria', 'instalaciones', 'terminaciones', 'otros']
+
+function PlanificacionTab({ obraId, obra, onPlanAplicado }) {
+  const [borradores, setBorradores] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [contexto, setContexto] = useState('')
+  const [generando, setGenerando] = useState(false)
+  const [activo, setActivo] = useState(null)
+  const [aplicando, setAplicando] = useState(false)
+
+  const cargar = () => {
+    setLoading(true)
+    return api.get(`/api/obras/${obraId}/plan`).then(r => {
+      setBorradores(r.data)
+      const ult = r.data.find(b => b.estado === 'borrador') || r.data[0] || null
+      setActivo(ult)
+      setLoading(false)
+    })
+  }
+  useEffect(() => { cargar() }, [obraId])
+
+  const generar = async (e) => {
+    e.preventDefault()
+    if (contexto.trim().length < 10) return
+    setGenerando(true)
+    try {
+      const r = await api.post(`/api/obras/${obraId}/plan/generar`, { contexto: contexto.trim() })
+      setActivo(r.data)
+      setContexto('')
+      await cargar()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error generando plan')
+    } finally {
+      setGenerando(false)
+    }
+  }
+
+  const guardarEdicion = async (resultado) => {
+    if (!activo || activo.estado !== 'borrador') return
+    const r = await api.put(`/api/obras/${obraId}/plan/${activo.id}`, { resultado })
+    setActivo(r.data)
+    cargar()
+  }
+
+  const aplicar = async () => {
+    if (!activo || activo.estado !== 'borrador') return
+    if (!confirm('Aplicar este plan crea etapas y frentes reales en la obra. ¿Confirmás?')) return
+    setAplicando(true)
+    try {
+      const r = await api.post(`/api/obras/${obraId}/plan/${activo.id}/aplicar`)
+      alert(`Aplicado: ${r.data.etapas_creadas} etapas y ${r.data.frentes_creados} frentes creados.`)
+      await cargar()
+      if (onPlanAplicado) onPlanAplicado()
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error aplicando plan')
+    } finally {
+      setAplicando(false)
+    }
+  }
+
+  const descartar = async () => {
+    if (!activo || activo.estado !== 'borrador') return
+    if (!confirm('¿Descartar este borrador?')) return
+    await api.post(`/api/obras/${obraId}/plan/${activo.id}/descartar`)
+    cargar()
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="card p-6">
+        <h2 className="text-lg font-semibold mb-1">Generar plan asistido</h2>
+        <p className="text-xs text-muted mb-4">
+          Describí brevemente la obra (tipo, m², plazos, particularidades). El agente devuelve un borrador
+          con etapas, frentes y materiales sugeridos que después podés editar y aplicar.
+        </p>
+        <form onSubmit={generar} className="space-y-3">
+          <textarea
+            className="input min-h-[100px]"
+            value={contexto}
+            onChange={e => setContexto(e.target.value)}
+            placeholder="Ej: Casa 180m² una planta, 4 ambientes, llave en mano. Cliente quiere terminar en 8 meses. Estructura tradicional, terminaciones medias. Hay anticipo del 30%."
+          />
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] text-muted">
+              {contexto.length} / 4000 caracteres · mínimo 10
+            </div>
+            <button className="btn-primary" disabled={generando || contexto.trim().length < 10}>
+              {generando ? 'Generando…' : 'Generar borrador'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {borradores.length > 0 && (
+        <section className="flex gap-2 flex-wrap text-xs">
+          <span className="text-muted self-center">Borradores:</span>
+          {borradores.map(b => {
+            const isActive = activo?.id === b.id
+            const chip = b.estado === 'aplicado' ? 'chip-olive' : b.estado === 'descartado' ? 'chip-muted' : 'chip-navy'
+            return (
+              <button
+                key={b.id}
+                onClick={() => setActivo(b)}
+                className={`px-3 py-1.5 rounded-full border transition ${
+                  isActive ? 'bg-navy text-bone border-navy' : 'border-border hover:bg-bone-200'
+                }`}
+              >
+                #{b.id} <span className={`${chip} text-[10px] ml-1`}>{b.estado}</span>
+                <span className="opacity-70 ml-1">{new Date(b.created_at).toLocaleDateString('es-AR')}</span>
+              </button>
+            )
+          })}
+        </section>
+      )}
+
+      {!loading && borradores.length === 0 && (
+        <div className="text-muted text-sm text-center border border-dashed border-border rounded-xl py-10">
+          Sin borradores todavía. Generá el primero arriba.
+        </div>
+      )}
+
+      {activo && <PlanPreview borrador={activo} onSave={guardarEdicion} onAplicar={aplicar} onDescartar={descartar} aplicando={aplicando}/>}
+    </div>
+  )
+}
+
+function PlanPreview({ borrador, onSave, onAplicar, onDescartar, aplicando }) {
+  const [etapas, setEtapas] = useState(borrador.resultado.etapas || [])
+  const [frentes, setFrentes] = useState(borrador.resultado.frentes || [])
+  const [materiales, setMateriales] = useState(borrador.resultado.materiales_sugeridos || [])
+  const [notas, setNotas] = useState(borrador.resultado.notas_generales || '')
+  const [dirty, setDirty] = useState(false)
+  const [guardando, setGuardando] = useState(false)
+
+  useEffect(() => {
+    setEtapas(borrador.resultado.etapas || [])
+    setFrentes(borrador.resultado.frentes || [])
+    setMateriales(borrador.resultado.materiales_sugeridos || [])
+    setNotas(borrador.resultado.notas_generales || '')
+    setDirty(false)
+  }, [borrador.id])
+
+  const editable = borrador.estado === 'borrador'
+  const marcarDirty = () => setDirty(true)
+
+  const guardar = async () => {
+    setGuardando(true)
+    try {
+      await onSave({
+        etapas, frentes, materiales_sugeridos: materiales, notas_generales: notas,
+      })
+      setDirty(false)
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  return (
+    <div className="card p-6 space-y-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-muted font-semibold">
+            Borrador #{borrador.id} · modelo: {borrador.model_used || '—'}
+          </div>
+          <h3 className="text-lg font-semibold mt-1">Plan propuesto</h3>
+        </div>
+        {editable && (
+          <div className="flex gap-2">
+            {dirty && (
+              <button onClick={guardar} disabled={guardando} className="btn-ghost text-xs">
+                {guardando ? 'Guardando…' : 'Guardar cambios'}
+              </button>
+            )}
+            <button onClick={onDescartar} className="btn-ghost text-xs">Descartar</button>
+            <button onClick={onAplicar} disabled={aplicando || dirty} className="btn-primary">
+              {aplicando ? 'Aplicando…' : 'Aplicar a la obra'}
+            </button>
+          </div>
+        )}
+        {borrador.estado === 'aplicado' && (
+          <span className="chip-olive text-xs">Aplicado {borrador.aplicado_at ? new Date(borrador.aplicado_at).toLocaleString('es-AR') : ''}</span>
+        )}
+        {borrador.estado === 'descartado' && <span className="chip-muted text-xs">Descartado</span>}
+      </div>
+
+      <div className="bg-bone-100/50 rounded-xl p-3 text-xs text-muted whitespace-pre-wrap">
+        <strong className="text-navy">Contexto:</strong> {borrador.prompt_input}
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Etapas ({etapas.length})</h4>
+        <div className="space-y-2">
+          {etapas.map((e, i) => (
+            <div key={i} className="border border-border rounded-lg p-3 grid md:grid-cols-12 gap-2 items-start">
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-4"
+                value={e.nombre}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, nombre: ev.target.value }; setEtapas(n); marcarDirty() }}
+                placeholder="Nombre"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                className="input !py-1.5 text-sm md:col-span-1"
+                value={e.nro_etapa ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, nro_etapa: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                title="Nro etapa"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.monto_contractual ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, monto_contractual: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                placeholder="Monto"
+              />
+              <input
+                disabled={!editable}
+                type="number"
+                step="0.1"
+                className="input !py-1.5 text-sm md:col-span-1"
+                value={e.porcentaje_avance ?? 0}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, porcentaje_avance: Number(ev.target.value) }; setEtapas(n); marcarDirty() }}
+                title="% avance"
+              />
+              <input
+                disabled={!editable}
+                type="date"
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.fecha_estimada || ''}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, fecha_estimada: ev.target.value || null }; setEtapas(n); marcarDirty() }}
+              />
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-2"
+                value={e.notas || ''}
+                onChange={ev => { const n = [...etapas]; n[i] = { ...e, notas: ev.target.value }; setEtapas(n); marcarDirty() }}
+                placeholder="Notas"
+              />
+            </div>
+          ))}
+          {editable && (
+            <button
+              onClick={() => { setEtapas([...etapas, { nombre: '', nro_etapa: etapas.length, monto_contractual: 0, porcentaje_avance: 0 }]); marcarDirty() }}
+              className="btn-ghost text-xs"
+            >
+              + Agregar etapa
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Frentes ({frentes.length})</h4>
+        <div className="space-y-2">
+          {frentes.map((f, i) => (
+            <div key={i} className="border border-border rounded-lg p-3 grid md:grid-cols-12 gap-2 items-start">
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-4"
+                value={f.nombre}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, nombre: ev.target.value }; setFrentes(n); marcarDirty() }}
+                placeholder="Nombre del frente"
+              />
+              <select
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-3"
+                value={f.tipo || ''}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, tipo: ev.target.value || null }; setFrentes(n); marcarDirty() }}
+              >
+                <option value="">— tipo —</option>
+                {TIPO_FRENTE_OPTS.map(t => <option key={t}>{t}</option>)}
+              </select>
+              <input
+                disabled={!editable}
+                className="input !py-1.5 text-sm md:col-span-5"
+                value={f.notas || ''}
+                onChange={ev => { const n = [...frentes]; n[i] = { ...f, notas: ev.target.value }; setFrentes(n); marcarDirty() }}
+                placeholder="Notas"
+              />
+            </div>
+          ))}
+          {editable && (
+            <button
+              onClick={() => { setFrentes([...frentes, { nombre: '', tipo: '' }]); marcarDirty() }}
+              className="btn-ghost text-xs"
+            >
+              + Agregar frente
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h4 className="text-sm font-semibold mb-2">Materiales sugeridos ({materiales.length})</h4>
+        <p className="text-xs text-muted mb-2">
+          Listado informativo — no se crean automáticamente en /materiales. Te sirven como checklist para cargar después.
+        </p>
+        <div className="space-y-1.5">
+          {materiales.map((m, i) => (
+            <div key={i} className="text-xs flex items-center gap-2 py-1.5 border-b border-bone-200 last:border-0">
+              <span className="font-medium flex-1">{m.nombre}</span>
+              <span className="text-muted">{m.categoria}</span>
+              <span className="tabular-nums">{m.cantidad} {m.unidad}</span>
+              <span className="text-muted">{m.etapa}</span>
+            </div>
+          ))}
+          {materiales.length === 0 && <div className="text-xs text-muted">Sin materiales sugeridos.</div>}
+        </div>
+      </div>
+
+      {(notas || editable) && (
+        <div>
+          <h4 className="text-sm font-semibold mb-2">Notas generales</h4>
+          <textarea
+            disabled={!editable}
+            className="input min-h-[60px] text-sm"
+            value={notas}
+            onChange={ev => { setNotas(ev.target.value); marcarDirty() }}
+          />
+        </div>
+      )}
     </div>
   )
 }
