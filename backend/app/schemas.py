@@ -996,3 +996,92 @@ class PlanObraAplicarOut(BaseModel):
     etapas_creadas: int
     frentes_creados: int
     materiales_sugeridos_count: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# CONSOLIDACIÓN BANCARIA (Sprint 23)
+# ════════════════════════════════════════════════════════════════════
+
+
+class MovimientoBancarioIn(BaseModel):
+    fecha: date
+    descripcion: str = Field(min_length=1, max_length=500)
+    debito: float = 0
+    credito: float = 0
+    saldo: Optional[float] = None
+
+
+class ExtractoIn(BaseModel):
+    banco: str = Field(min_length=1, max_length=100)
+    cuenta: Optional[str] = Field(default=None, max_length=60)
+    periodo_desde: Optional[date] = None
+    periodo_hasta: Optional[date] = None
+    archivo_nombre: Optional[str] = None
+    movimientos: List[MovimientoBancarioIn] = Field(default_factory=list)
+
+
+class MovimientoBancarioOut(BaseModel):
+    id: int
+    extracto_id: int
+    fecha: date
+    descripcion: str
+    debito: float
+    credito: float
+    saldo: Optional[float] = None
+    movimiento_obra_id: Optional[int] = None
+    conciliado_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractoOut(BaseModel):
+    id: int
+    banco: str
+    cuenta: Optional[str] = None
+    periodo_desde: Optional[date] = None
+    periodo_hasta: Optional[date] = None
+    archivo_nombre: Optional[str] = None
+    total_debe: float = 0
+    total_haber: float = 0
+    total_movs: int = 0
+    created_by_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ExtractoDetalleOut(ExtractoOut):
+    movimientos: List[MovimientoBancarioOut] = []
+
+
+class MatchIn(BaseModel):
+    movimiento_obra_id: int
+
+
+class SugerenciaMatchOut(BaseModel):
+    movimiento_obra_id: int
+    obra_codigo: str
+    concepto: str
+    fecha: date
+    monto: float
+    tipo: TipoMovimiento
+    distancia_dias: int  # |fecha_mov_obra - fecha_mov_bancario|
+
+
+class MovimientoBancarioConSugerenciasOut(MovimientoBancarioOut):
+    sugerencias: List[SugerenciaMatchOut] = []
+
+
+class ConsolidacionResumen(BaseModel):
+    extracto_id: int
+    total_debe_extracto: float
+    total_haber_extracto: float
+    total_debe_obra_conciliado: float   # sum(monto) de EGRESO matcheados
+    total_haber_obra_conciliado: float  # sum(monto) de INGRESO matcheados
+    diferencia_debe: float   # total_debe_extracto - total_debe_obra_conciliado
+    diferencia_haber: float
+    movs_total: int
+    movs_conciliados: int
+    movs_sin_match: int

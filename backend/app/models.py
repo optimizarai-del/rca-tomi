@@ -893,7 +893,7 @@ class AgentAction(Base):
 SECCIONES = (
     "obras", "ordenes", "feed", "requerimientos",
     "cuadrillas", "materiales", "presupuestos", "proveedores",
-    "finanzas", "movimientos", "aportes", "comprobantes", "clientes", "socios",
+    "finanzas", "movimientos", "aportes", "comprobantes", "consolidacion", "clientes", "socios",
     "equipo", "mensajes",
 )
 
@@ -909,6 +909,58 @@ class PlanObraEstado(str, Enum):
     borrador = "borrador"
     aplicado = "aplicado"
     descartado = "descartado"
+
+
+class Extracto(Base):
+    """Sprint 23 — Extracto bancario importado para conciliación.
+
+    Agrupa N MovimientoBancario. El usuario sube un CSV / pega texto,
+    el frontend lo parsea y manda al backend ya estructurado.
+    """
+    __tablename__ = "extractos"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    banco = Column(String(100), nullable=False)
+    cuenta = Column(String(60))  # alias o nro de cuenta
+    periodo_desde = Column(Date)
+    periodo_hasta = Column(Date)
+    archivo_nombre = Column(String(200))
+    total_debe = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
+    total_haber = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")
+    total_movs = Column(Integer, default=0, nullable=False, server_default="0")
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    movimientos = relationship(
+        "MovimientoBancario", back_populates="extracto",
+        cascade="all, delete-orphan",
+    )
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+
+class MovimientoBancario(Base):
+    """Sprint 23 — Cada línea del extracto.
+
+    Match con `movimiento_obra_id` (Sprint AB): un mov bancario se concilia
+    con un movimiento de obra concreto. Si queda sin match → es "no conciliado".
+    """
+    __tablename__ = "movimientos_bancarios"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+    extracto_id = Column(Integer, ForeignKey("extractos.id", ondelete="CASCADE"), nullable=False, index=True)
+    fecha = Column(Date, nullable=False, index=True)
+    descripcion = Column(String(500), nullable=False)
+    debito = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")  # salida
+    credito = Column(Numeric(15, 2), default=0, nullable=False, server_default="0")  # entrada
+    saldo = Column(Numeric(15, 2))  # opcional, si lo trae el extracto
+    hash_dedupe = Column(String(64), index=True)  # fecha+desc+monto, para evitar duplicados al reimportar
+    movimiento_obra_id = Column(Integer, ForeignKey("movimientos_obra.id"), index=True)
+    conciliado_at = Column(DateTime)
+    conciliado_by_id = Column(Integer, ForeignKey("users.id"))
+
+    extracto = relationship("Extracto", back_populates="movimientos")
+    movimiento_obra = relationship("MovimientoObra", foreign_keys=[movimiento_obra_id])
+    conciliado_by = relationship("User", foreign_keys=[conciliado_by_id])
 
 
 class PlanObraBorrador(Base):

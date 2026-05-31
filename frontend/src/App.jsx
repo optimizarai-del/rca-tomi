@@ -15,6 +15,7 @@ import Aportes from './pages/Aportes'
 import Comprobantes from './pages/Comprobantes'
 import Clientes from './pages/Clientes'
 import ClienteDetalle from './pages/ClienteDetalle'
+import Consolidacion from './pages/Consolidacion'
 import Socios from './pages/Socios'
 import Equipo from './pages/Equipo'
 import EquipoPermisos from './pages/EquipoPermisos'
@@ -45,6 +46,8 @@ export default function App() {
       <Route path="/comprobantes" element={<P requireFinanzas><Comprobantes /></P>} />
       <Route path="/clientes" element={<P requireFinanzas><Clientes /></P>} />
       <Route path="/clientes/:id" element={<P requireFinanzas><ClienteDetalle /></P>} />
+      <Route path="/consolidacion" element={<P requireFinanzas><Consolidacion /></P>} />
+      <Route path="/consolidacion/:id" element={<P requireFinanzas><Consolidacion /></P>} />
       <Route path="/socios" element={<P requireFinanzas><Socios /></P>} />
       <Route path="/equipo" element={<P requireAdmin><Equipo /></P>} />
       <Route path="/equipo/:uid/permisos" element={<P requireAdmin><EquipoPermisos /></P>} />
