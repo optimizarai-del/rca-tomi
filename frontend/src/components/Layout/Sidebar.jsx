@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutGrid, Users, Package, Truck, ClipboardList,
   DollarSign, Activity, UserCog, ArrowLeftRight, HandCoins, FileText, Building2,
-  MessageSquare, Briefcase, BookCheck,
+  MessageSquare, Briefcase, BookCheck, Camera,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
@@ -58,6 +58,7 @@ export default function Sidebar() {
           {show('aportes', hasFinanzas) && <NavLink to="/aportes" className={link}><HandCoins size={15} strokeWidth={1.8}/> Aportes</NavLink>}
           {show('comprobantes', hasFinanzas) && <NavLink to="/comprobantes" className={link}><FileText size={15} strokeWidth={1.8}/> Comprobantes</NavLink>}
           {show('consolidacion', hasFinanzas) && <NavLink to="/consolidacion" className={link}><BookCheck size={15} strokeWidth={1.8}/> Consolidación</NavLink>}
+          {show('tickets_ocr', hasFinanzas) && <NavLink to="/ocr-tickets" className={link}><Camera size={15} strokeWidth={1.8}/> Tickets OCR</NavLink>}
           {show('clientes', hasFinanzas) && <NavLink to="/clientes" className={link}><Building2 size={15} strokeWidth={1.8}/> Clientes</NavLink>}
           {show('socios', hasFinanzas) && <NavLink to="/socios" className={link}><Briefcase size={15} strokeWidth={1.8}/> Socios</NavLink>}
         </>

@@ -22,9 +22,11 @@ from app import models
 from app.database import get_db
 from app.slash_commands import is_slash_command, handle_slash
 from app.messaging.telegram_sender import (
-    send_telegram, authorized_chat_ids, webhook_secret,
+    send_telegram, authorized_chat_ids, webhook_secret, get_file_url,
 )
 from app.agent.orchestrator import chat as agent_chat
+from app import ocr_vision
+from app.routers.ocr_tickets import persistir_resultado
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/telegram", tags=["telegram"])
@@ -76,6 +78,72 @@ async def telegram_webhook(
     return _handle_update(update, db)
 
 
+def _handle_photo(db: Session, *, chat_id: str, user: models.User, message: dict) -> dict:
+    """Sprint 18 — usuario manda foto de ticket. Pipeline:
+    1. Tomar el `file_id` de la mejor calidad (último PhotoSize).
+    2. Descargar URL temporal de Telegram via get_file_url.
+    3. Llamar a Claude Vision (o placeholder si no hay API key).
+    4. Persistir TicketOCR con estado=pendiente.
+    5. Responder con resumen + instrucciones para confirmar/rechazar.
+    """
+    photos = message.get("photo") or []
+    if not photos:
+        return {"ok": True, "handled": False, "reason": "no-photo"}
+    file_id = photos[-1].get("file_id")  # último = mayor resolución
+    message_id = str(message.get("message_id") or "")
+    caption = (message.get("caption") or "").strip() or None
+
+    file_url = get_file_url(file_id) if file_id else None
+
+    resultado, model_used = ocr_vision.parsear_ticket(image_url=file_url)
+
+    # Persistir
+    t = persistir_resultado(
+        db, user=user, resultado=resultado, model_used=model_used,
+        image_url=file_url,
+        telegram_chat_id=chat_id,
+        telegram_message_id=message_id,
+        telegram_file_id=file_id,
+    )
+
+    res = resultado
+    proveedor_match = ocr_vision.matchear_proveedor(
+        db, cuit=res.get("proveedor_cuit"), nombre=res.get("proveedor_nombre"),
+    )
+
+    lines = [
+        f"🧾 Ticket #{t.id} extraído (modelo: {model_used})",
+    ]
+    if res.get("tipo_documento"):
+        lines.append(f"  • Tipo: {res['tipo_documento']}")
+    if res.get("nro_comprobante"):
+        lines.append(f"  • Nro: {res['nro_comprobante']}")
+    if res.get("fecha_emision"):
+        lines.append(f"  • Fecha: {res['fecha_emision']}")
+    if res.get("proveedor_nombre"):
+        line = f"  • Proveedor: {res['proveedor_nombre']}"
+        if proveedor_match:
+            line += f" ✅ (match #{proveedor_match.id})"
+        else:
+            line += " ⚠️ no encontrado"
+        lines.append(line)
+    if res.get("total"):
+        lines.append(f"  • TOTAL: ${res['total']:.2f}")
+    if caption:
+        lines.append(f"  • Caption: {caption}")
+    lines.append("")
+    lines.append("Para confirmarlo:")
+    lines.append(f"  /confirmar {t.id} <obra_codigo>")
+    lines.append(f"  /rechazar {t.id}")
+
+    send_telegram(
+        db, chat_id, "\n".join(lines),
+        notification_type="ocr_ticket_resumen",
+        user_id=user.id,
+    )
+    return {"ok": True, "handled": True, "mode": "ocr", "ticket_id": t.id}
+
+
 def _handle_update(update: dict, db: Session) -> dict:
     """Procesa un Update. Separado para reusar desde polling script."""
     message = update.get("message") or update.get("edited_message") or {}
@@ -85,11 +153,24 @@ def _handle_update(update: dict, db: Session) -> dict:
     username = from_.get("username")
     text = (message.get("text") or "").strip()
 
+    # ─── Sprint 18: foto de ticket → OCR con Claude Vision ──────
+    if chat_id and message.get("photo") and not text:
+        # Validar whitelist antes de procesar (lo mismo que para texto)
+        autorizados = authorized_chat_ids()
+        if chat_id not in autorizados:
+            logger.info(f"[tg:photo:unauth] chat={chat_id}")
+            return {"ok": True, "handled": False, "reason": "not-whitelisted"}
+        user_p = db.query(models.User).filter(models.User.telegram_chat_id == chat_id).first()
+        if not user_p:
+            send_telegram(
+                db, chat_id,
+                "⚠️ Tu chat no está vinculado a un usuario. /vincular <código>",
+                notification_type="telegram_no_user_photo",
+            )
+            return {"ok": True, "handled": False, "reason": "no-user-binding"}
+        return _handle_photo(db, chat_id=chat_id, user=user_p, message=message)
+
     if not chat_id or not text:
-        # Por ahora ignoramos mensajes no-texto (fotos, etc.) — Sprint 11b las maneja
-        if message.get("photo"):
-            send_telegram(db, chat_id, "📸 Imágenes todavía no las proceso — voy a aprender en el próximo sprint.",
-                         notification_type="telegram_unsupported")
         return {"ok": True, "handled": False}
 
     # ─── Vinculación (acepta SIN whitelist) ─────────────────────

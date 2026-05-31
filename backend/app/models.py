@@ -894,6 +894,7 @@ SECCIONES = (
     "obras", "ordenes", "feed", "requerimientos",
     "cuadrillas", "materiales", "presupuestos", "proveedores",
     "finanzas", "movimientos", "aportes", "comprobantes", "consolidacion", "clientes", "socios",
+    "tickets_ocr",  # Sprint 18
     "equipo", "mensajes",
 )
 
@@ -909,6 +910,56 @@ class PlanObraEstado(str, Enum):
     borrador = "borrador"
     aplicado = "aplicado"
     descartado = "descartado"
+
+
+class TicketOCREstado(str, Enum):
+    """Sprint 18 — ciclo de vida de un ticket subido por Telegram."""
+    pendiente = "pendiente"
+    confirmado = "confirmado"
+    rechazado = "rechazado"
+    error = "error"  # falló el parseo del LLM
+
+
+class TicketOCR(Base):
+    """Sprint 18 — Borrador de comprobante extraído por Claude Vision de una foto.
+
+    Workflow:
+    1. Usuario manda foto al bot de Telegram.
+    2. Bot descarga, llama a Claude Vision, persiste TicketOCR con resultado_json.
+    3. Bot responde con resumen + slash para confirmar/rechazar.
+    4. /confirmar <id> [obra=CODIGO] crea Comprobante + MovimientoObra reales.
+    5. estado pasa a 'confirmado' (o 'rechazado').
+    """
+    __tablename__ = "tickets_ocr"
+    id = Column(Integer, primary_key=True)
+    is_demo = Column(Boolean, default=False, nullable=False, index=True, server_default="false")
+
+    # Origen Telegram
+    telegram_chat_id = Column(String(60), index=True)
+    telegram_message_id = Column(String(60))
+    telegram_file_id = Column(String(200))  # para re-descargar si hace falta
+    imagen_url_cached = Column(String(500))  # URL temporal de Telegram (~1h)
+
+    # OCR
+    resultado_json = Column(Text, nullable=False)  # estructura parseada por Vision
+    model_used = Column(String(60))  # "claude-sonnet-4-5" | "placeholder"
+    error_msg = Column(Text)  # si estado=error, el detalle
+
+    estado = Column(SQLEnum(TicketOCREstado), default=TicketOCREstado.pendiente, nullable=False, index=True)
+
+    # Confirmación: cuando estado='confirmado' se asigna obra + crea registros.
+    obra_id = Column(Integer, ForeignKey("obras.id"))
+    comprobante_id = Column(Integer, ForeignKey("comprobantes.id"))
+    movimiento_obra_id = Column(Integer, ForeignKey("movimientos_obra.id"))
+
+    created_by_id = Column(Integer, ForeignKey("users.id"))
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    confirmed_at = Column(DateTime)
+
+    obra = relationship("Obra")
+    comprobante = relationship("Comprobante", foreign_keys=[comprobante_id])
+    movimiento = relationship("MovimientoObra", foreign_keys=[movimiento_obra_id])
+    created_by = relationship("User", foreign_keys=[created_by_id])
 
 
 class Extracto(Base):

@@ -11,6 +11,7 @@ from app.models import (
     RequerimientoEstado,
     LegalidadMovimiento, CobroPagoEstado,
     PlanObraEstado,
+    TicketOCREstado,
 )
 
 
@@ -1085,3 +1086,73 @@ class ConsolidacionResumen(BaseModel):
     movs_total: int
     movs_conciliados: int
     movs_sin_match: int
+
+
+# ════════════════════════════════════════════════════════════════════
+# OCR DE TICKETS (Sprint 18)
+# ════════════════════════════════════════════════════════════════════
+
+
+class TicketOCRItem(BaseModel):
+    descripcion: Optional[str] = None
+    cantidad: Optional[float] = None
+    unidad: Optional[str] = None
+    precio_unitario: Optional[float] = None
+    subtotal: Optional[float] = None
+
+
+class TicketOCRResultado(BaseModel):
+    """Estructura del JSON devuelto por Claude Vision (todos opcionales — el
+    LLM puede no detectar algunos campos)."""
+    tipo_documento: Optional[str] = None
+    nro_comprobante: Optional[str] = None
+    punto_venta: Optional[int] = None
+    fecha_emision: Optional[date] = None
+    proveedor_nombre: Optional[str] = None
+    proveedor_cuit: Optional[str] = None
+    items: List[TicketOCRItem] = []
+    neto_gravado: Optional[float] = None
+    iva_21: Optional[float] = None
+    iva_105: Optional[float] = None
+    total: Optional[float] = None
+    notas: Optional[str] = None
+
+
+class TicketOCRSubirIn(BaseModel):
+    """Subir un ticket desde la web — toma URL o base64 + datos de Telegram opcionales."""
+    model_config = ConfigDict(protected_namespaces=())
+    image_url: Optional[str] = None
+    image_base64: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    telegram_message_id: Optional[str] = None
+    telegram_file_id: Optional[str] = None
+    model_override: Optional[str] = None
+
+
+class TicketOCROut(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+    id: int
+    estado: TicketOCREstado
+    resultado: TicketOCRResultado
+    model_used: Optional[str] = None
+    error_msg: Optional[str] = None
+    telegram_chat_id: Optional[str] = None
+    imagen_url_cached: Optional[str] = None
+    obra_id: Optional[int] = None
+    comprobante_id: Optional[int] = None
+    movimiento_obra_id: Optional[int] = None
+    created_by_id: Optional[int] = None
+    created_at: datetime
+    confirmed_at: Optional[datetime] = None
+
+
+class TicketOCRConfirmarIn(BaseModel):
+    """Datos para confirmar el ticket y crear Comprobante + Movimiento."""
+    obra_id: int
+    proveedor_id: Optional[int] = None  # si null, intenta match automático
+    es_venta: bool = False  # default: comprobante recibido (egreso)
+    categoria_egreso: Optional[CategoriaEgreso] = CategoriaEgreso.MATERIALES
+    legalidad: LegalidadMovimiento = LegalidadMovimiento.blanco
+    medio_pago: MedioPago = MedioPago.TRANSFERENCIA
+    cobro_pago_estado: CobroPagoEstado = CobroPagoEstado.pendiente
+    notas_extra: Optional[str] = None

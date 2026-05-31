@@ -95,6 +95,7 @@ _DEMO_TABLES = {
     "planes_obra_borrador",  # Sprint 24
     "extractos",  # Sprint 23
     "movimientos_bancarios",  # Sprint 23
+    "tickets_ocr",  # Sprint 18
 }
 
 

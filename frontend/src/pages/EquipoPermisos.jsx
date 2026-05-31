@@ -17,6 +17,7 @@ const SECCION_LABELS = {
   aportes: 'Aportes',
   comprobantes: 'Comprobantes',
   consolidacion: 'Consolidación',
+  tickets_ocr: 'Tickets OCR',
   clientes: 'Clientes',
   socios: 'Socios',
   equipo: 'Usuarios',
@@ -26,7 +27,7 @@ const SECCION_LABELS = {
 const GRUPOS = {
   General: ['obras', 'ordenes', 'feed', 'requerimientos'],
   Recursos: ['cuadrillas', 'materiales', 'presupuestos', 'proveedores'],
-  Finanzas: ['finanzas', 'movimientos', 'aportes', 'comprobantes', 'consolidacion', 'clientes', 'socios'],
+  Finanzas: ['finanzas', 'movimientos', 'aportes', 'comprobantes', 'consolidacion', 'tickets_ocr', 'clientes', 'socios'],
   Administración: ['equipo', 'mensajes'],
 }
 
